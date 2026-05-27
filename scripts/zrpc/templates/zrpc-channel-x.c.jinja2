@@ -1,0 +1,890 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @brief zRPC channel {{ channel.name }} implementation.
+ */
+
+#include <string.h>
+
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/kernel.h>
+#include <zephyr/rpc/zrpc-channels.h>
+#include <zephyr/rpc/zrpc-channel-{{ channel.name }}.h>
+#include <zephyr/rpc/zrpc-tlv.h>
+
+/**
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @{
+ */
+
+/** compatible = "zrpc,channel"; */
+#define DT_DRV_COMPAT zrpc_channel
+
+/**
+ * @brief Look up {{ channel.name }} RPC channel.
+ *
+ * @param n The device instance.
+ *
+ * @return See ZRPC_CHANNEL_DEV_LOOKUP()
+ */
+#define ZRPC_CHANNEL_{{ channel.name | upper }}_DEV_LOOKUP(n)	\
+	ZRPC_CHANNEL_DEV_LOOKUP(n, {{ channel.chid }})
+
+/** {{ channel.name }} channel device */
+static struct device const *{{ channel.name }}_dev =
+	DT_INST_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_{{ channel.name | upper }}_DEV_LOOKUP);
+
+#ifdef CONFIG_ZRPC_HEAP_TYPE_PER_CHANNEL
+
+/**
+ * @brief Lookup size of {{ channel.name }} RPC channel heap.
+ *
+ * @param n The device identifier.
+ *
+ * @return See ZRPC_CHANNEL_HEAP_SIZE()
+ */
+#define ZRPC_CHANNEL_{{ channel.name | upper }}_HEAP_SIZE(n)	\
+	ZRPC_CHANNEL_HEAP_SIZE(n, {{ channel.chid }})
+
+
+/** {{ channel.name }} channel mutex */
+static K_MUTEX_DEFINE(zrpc_{{ channel.name | lower }}_heap_mutex);
+
+
+/** {{ channel.name }} heap */
+static K_HEAP_DEFINE(zrpc_{{ channel.name | lower }}_heap,
+		DT_DRV_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_{{ channel.name | upper }}_HEAP_SIZE));
+
+/**
+ * @brief Allocate @c n bytes of 4-byte aligned data from the {{ channel.name }} heap.
+ *
+ * @param n Number of bytes to allocate.
+ *
+ * @return Address of the allocated memory, or @c NULL on failure
+ */
+static inline void *zrpc_{{ channel.name | lower }}_heap_alloc(size_t n)
+{
+	int ret;
+	void *p;
+
+	ret = k_mutex_lock(&zrpc_{{ channel.name | lower }}_heap_mutex,
+			K_FOREVER);
+	if (ret)
+		return NULL;
+	p = k_heap_aligned_alloc(&zrpc_{{ channel.name | lower }}_heap,
+			zrpc_alignto, n, K_NO_WAIT);
+	k_mutex_unlock(&zrpc_{{ channel.name | lower }}_heap_mutex);
+	return p;
+}
+
+
+static inline void zrpc_{{ channel.name | lower }}_heap_free(void *p)
+{
+	int ret;
+
+	ret = k_mutex_lock(&zrpc_{{ channel.name | lower }}_heap_mutex,
+			K_FOREVER);
+	__ASSERT_NO_MSG(!ret);
+
+	k_heap_free(&zrpc_{{ channel.name | lower }}_heap, p);
+	k_mutex_unlock(&zrpc_{{ channel.name }}_heap_mutex);
+}
+
+#elif defined CONFIG_ZRPC_HEAP_TYPE_GLOBAL
+
+/**
+ * @brief Allocate @c n bytes of 4-byte aligned data from the global zRPC heap.
+ *
+ * @param n Number of bytes to allocate.
+ *
+ * @return Address of the allocated memory, or @c NULL on failure.
+ */
+static inline void *zrpc_{{ channel.name | lower }}_heap_alloc(size_t n)
+{
+	int ret;
+	void *p;
+
+	ret = k_mutex_lock(&zrpc_gbl_heap_mutex, K_FOREVER);
+	if (ret)
+		return NULL;
+	p = k_heap_aligned_alloc(&zrpc_gbl_heap, zrpc_alignto, n, K_NO_WAIT);
+	k_mutex_unlock(&zrpc_gbl_heap_mutex);
+	return p;
+}
+
+
+static inline void zrpc_{{ channel.name | lower }}_heap_free(void *p)
+{
+	int ret;
+	ret = k_mutex_lock(&zrpc_gbl_heap_mutex, K_FOREVER);
+	__ASSERT_NO_MSG(!ret);
+	k_heap_free(&zrpc_gbl_heap, p);
+	k_mutex_unlock(&zrpc_gbl_heap_mutex);
+}
+
+#else
+#error "Unsupported heap type"
+#endif
+
+
+
+/**
+ * @brief Outgoing RPCs for channel {{ channel.name }}
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @{
+ */
+
+static_assert(alignof(struct zrpc_msghdr) >= zrpc_alignto,
+	"zrpc_msghdr alignment is insufficient");
+static_assert(alignof(struct zrpc_attr) >= zrpc_alignto,
+	"zrpc_attr alignment is insufficient");
+
+
+/** RPC CRCs */
+enum {
+{% for rpc in channel.rpcs %}
+	/** RPC {{ rpc.name }} CRC. */
+	{{ "%-42s" | format ("ZRPC_%s_%s_CRC" | format( channel.name | upper, rpc.name | upper, )) }} = {{ rpc.crc }},
+{% endfor %}
+};
+
+
+#if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+{% for rpc in channel.rpcs_from_host %}
+
+
+/**
+ * @brief Encode {{ rpc.name }} RPC.
+ *
+ * @param[out]     msghdr The message to fill in.
+ * @param[in]      msgsz  Number of bytes allocated for the message..
+	{% for param in rpc.non_void_parameters %}
+		{% if param.description %}
+			{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% endif %}
+		{% endif %}
+	{% endfor %}
+ *
+ * @retval 0      Message successfully populated.
+ * @retval -errno Message population failed.
+ */
+	{% if rpc.in_parameters | length %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(struct zrpc_msghdr *restrict msghdr, uint32_t msgsz, {{ rpc.in_parameters | map(attribute="c_decl") | join(", ") }})
+	{% else %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(struct zrpc_msghdr *restrict msghdr, uint32_t msgsz)
+	{% endif %}
+{
+	int ret = 0;
+	{% if rpc.in_parameters | length %}
+	zrpc_tag tag;
+	{% endif %}
+	struct zrpc_tlvb tlvb;
+
+	zrpc_tlvb_init(&tlvb, msgsz - sizeof(*msghdr), msghdr->attrs);
+	{% for param in rpc.in_parameters %}
+
+	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+		{% if param.typedecl.is_ptr %}
+			{% if param.typedecl.is_str %}
+			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
+			{% else %}
+			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
+			{% endif %}
+		{% else %}
+			{% set invocation = "zrpc_tlvb_put_%s(&tlvb, tag, %s)" | format( param.typedecl.ident.name | lower, param.name, ) %}
+		{% endif %}
+		{% if loop.first %}
+	ret = {{ invocation }};
+		{% else %}
+	if (likely(!ret))
+		ret = {{ invocation }};
+		{% endif %}
+	{% endfor %}
+
+	msghdr->id = ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }};
+	msghdr->flags = 0;
+	msghdr->len = zrpc_tlvb_len(&tlvb);
+	msghdr->seq = zrpc_seq_next();
+	msghdr->crc = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC;
+
+	return ret;
+}
+
+
+/**
+ * @brief Decode {{ rpc.name }} RPC response.
+ *
+ * @param[in]  msghdr The message to decode.
+ * @param[out] attrs  Attribute map to distribute the attributes in @c msghdr across.
+ * @param[in]  nattrs Number of attributes at @c attrs.
+ *
+ * @retval 0        Message successfully decoded.
+ * @retval -EPROTO  Peer implements a different RPC protocol.
+ * @retval -ENODATA At least one attribute is missing.
+ */
+static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_reply(struct zrpc_msghdr *restrict msghdr, struct zrpc_attr **attrs, size_t nattrs)
+{
+	size_t n;
+	struct zrpc_tlvb tlvb;
+
+	if (unlikely(msghdr->crc != ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC))
+		return -EPROTO;
+
+	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
+	zrpc_tlvb_skip(&tlvb, msghdr->len);
+	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
+	if (unlikely(n != nattrs))
+		return -ENODATA;
+
+	return 0;
+}
+
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
+{
+	int ret;
+	struct zrpc_attr *attr;
+	struct zrpc_attr *attrs[] = {
+		[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
+	{% for param in rpc.out_parameters %}
+		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+	{% endfor %}
+	};
+	struct zrpc_msghdr *msghdr;
+	uint32_t const in_required =
+		sizeof(struct zrpc_msghdr)
+	{% for param in rpc.in_parameters %}
+		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
+	{% endfor %}
+	;
+	uint32_t const out_required =
+		sizeof(struct zrpc_msghdr)
+	{% for param in rpc.out_parameters %}
+		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
+	{% endfor %}
+	;
+	uint32_t const required = MAX(in_required, out_required);
+
+	if (unlikely(!device_is_ready({{ channel.name | lower }}_dev)))
+		return -ENODEV;
+
+#ifdef CONFIG_ZRPC_PEDANTIC
+	if (unlikely(required > ZRPC_MSGLEN_MAX))
+		return -EOVERFLOW;
+#endif
+	msghdr = zrpc_{{ channel.name | lower }}_heap_alloc(required);
+	if (!msghdr)
+		return -ENOMEM;
+
+	{% if rpc.in_parameters | length %}
+	ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(msghdr, required, {{ rpc.in_parameters | map(attribute="name") | join(", ") }});
+	{% else %}
+	ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(msghdr, required);
+	{% endif %}
+
+	if (likely(!ret))
+		ret = zrpc_send({{ channel.name }}_dev, msghdr);
+	if (likely(!ret))
+		ret = zrpc_recv({{ channel.name}}_dev, msghdr->seq, msghdr, required);
+	if (likely(!ret))
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_decode_reply(msghdr, attrs,
+				ARRAY_SIZE(attrs));
+
+#ifdef CONFIG_ZRPC_PEDANTIC
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	if (unlikely(!ret && !attr))
+		ret = -ENODATA;
+	{% for param in rpc.out_parameters %}
+
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+	if (unlikely(!ret && !attr))
+		ret = -ENODATA;
+	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
+		ret = -ENOBUFS;
+	{% endfor %}
+#endif
+	if (!ret) {
+	{% for param in rpc.out_parameters %}
+		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+
+	{% endfor %}
+		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	}
+
+	zrpc_{{ channel.name | lower }}_heap_free(msghdr);
+	return ret ? ret : (int)zrpc_attr_get_u32(attr);
+}
+{% endfor %}
+
+
+#else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+{% for rpc in channel.rpcs_from_remote %}
+
+
+/**
+ * @brief Encode {{ rpc.name }} RPC.
+ *
+ * @param[out]     msghdr The message to fill in.
+ * @param[in]      msgsz  Number of bytes allocated for the message..
+	{% for param in rpc.non_void_parameters %}
+		{% if param.description %}
+			{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+			{% endif %}
+		{% endif %}
+	{% endfor %}
+ *
+ * @retval 0      Message successfully populated.
+ * @retval -errno Message population failed.
+ */
+	{% if rpc.in_parameters | length %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(struct zrpc_msghdr *restrict msghdr, uint32_t msgsz, {{ rpc.in_parameters | map(attribute="c_decl") | join(", ") }})
+	{% else %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(struct zrpc_msghdr *restrict msghdr, uint32_t msgsz)
+	{% endif %}
+{
+	int ret = 0;
+	{% if rpc.in_parameters | length %}
+	zrpc_tag tag;
+	{% endif %}
+	struct zrpc_tlvb tlvb;
+
+	zrpc_tlvb_init(&tlvb, msgsz - sizeof(*msghdr), msghdr->attrs);
+	{% for param in rpc.in_parameters %}
+
+	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+		{% if param.typedecl.is_ptr %}
+			{% if param.typedecl.is_str %}
+			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
+			{% else %}
+			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
+			{% endif %}
+		{% else %}
+			{% set invocation = "zrpc_tlvb_put_%s(&tlvb, tag, %s)" | format( param.typedecl.ident.name | lower, param.name, ) %}
+		{% endif %}
+		{% if loop.first %}
+	ret = {{ invocation }};
+		{% else %}
+	if (likely(!ret))
+		ret = {{ invocation }};
+		{% endif %}
+	{% endfor %}
+
+	msghdr->id = ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }};
+	msghdr->flags = 0;
+	msghdr->len = zrpc_tlvb_len(&tlvb);
+	msghdr->seq = zrpc_seq_next();
+	msghdr->crc = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC;
+
+	return ret;
+}
+
+
+/**
+ * @brief Decode {{ rpc.name }} RPC response.
+ *
+ * @param[in]  msghdr The message to decode.
+ * @param[out] attrs  Attribute map to distribute the attributes in @c msghdr across.
+ * @param[in]  nattrs Number of attributes at @c attrs.
+ *
+ * @retval 0        Message successfully decoded.
+ * @retval -EPROTO  Peer implements a different RPC protocol.
+ * @retval -ENODATA At least one attribute is missing.
+ */
+static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_reply(struct zrpc_msghdr *restrict msghdr, struct zrpc_attr **attrs, size_t nattrs)
+{
+	size_t n;
+	struct zrpc_tlvb tlvb;
+
+	if (unlikely(msghdr->crc != ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC))
+		return -EPROTO;
+
+	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
+	zrpc_tlvb_skip(&tlvb, msghdr->len);
+	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
+	if (unlikely(n != nattrs))
+		return -ENODATA;
+
+	return 0;
+}
+
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
+{
+	int ret;
+	struct zrpc_attr *attr;
+	struct zrpc_attr *attrs[] = {
+		[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
+	{% for param in rpc.out_parameters %}
+		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+	{% endfor %}
+	};
+	struct zrpc_msghdr *msghdr;
+	uint32_t const in_required =
+		sizeof(struct zrpc_msghdr)
+	{% for param in rpc.in_parameters %}
+		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
+	{% endfor %}
+	;
+	uint32_t const out_required =
+		sizeof(struct zrpc_msghdr)
+	{% for param in rpc.out_parameters %}
+		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
+	{% endfor %}
+	;
+	uint32_t const required = MAX(in_required, out_required);
+
+	if (unlikely(!device_is_ready({{ channel.name | lower }}_dev)))
+		return -ENODEV;
+
+#ifdef CONFIG_ZRPC_PEDANTIC
+	if (unlikely(required > ZRPC_MSGLEN_MAX))
+		return -EOVERFLOW;
+#endif
+	msghdr = zrpc_{{ channel.name | lower }}_heap_alloc(required);
+	if (!msghdr)
+		return -ENOMEM;
+
+	{% if rpc.in_parameters | length %}
+	ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(msghdr, required, {{ rpc.in_parameters | map(attribute="name") | join(", ") }});
+	{% else %}
+	ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request(msghdr, required);
+	{% endif %}
+
+	if (likely(!ret))
+		ret = zrpc_send({{ channel.name }}_dev, msghdr);
+	if (likely(!ret))
+		ret = zrpc_recv({{ channel.name}}_dev, msghdr->seq, msghdr, required);
+	if (likely(!ret))
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_decode_reply(msghdr, attrs,
+				ARRAY_SIZE(attrs));
+
+#ifdef CONFIG_ZRPC_PEDANTIC
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	if (unlikely(!ret && !attr))
+		ret = -ENODATA;
+	{% for param in rpc.out_parameters %}
+
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+	if (unlikely(!ret && !attr))
+		ret = -ENODATA;
+	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
+		ret = -ENOBUFS;
+	{% endfor %}
+#endif
+	if (!ret) {
+	{% for param in rpc.out_parameters %}
+		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+
+	{% endfor %}
+		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	}
+
+	zrpc_{{ channel.name | lower }}_heap_free(msghdr);
+	return ret ? ret : (int)zrpc_attr_get_u32(attr);
+}
+{% endfor %}
+
+
+#endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+
+
+#if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+{% for rpc in channel.rpcs_to_host %}
+
+
+/**
+ * @brief Decode {{ rpc.name }} RPC.
+ *
+ * @param[in]  msghdr The message to decode.
+ * @param[out] attrs  Attribute map to distribute the attributes in @c msghdr across.
+ * @param[in]  nattrs Number of attributes at @c attrs.
+ *
+ * @retval 0        Message successfully decoded.
+ * @retval -EPROTO  Peer implements a different RPC protocol.
+ * @retval -ENODATA At least one attribute is missing.
+ */
+static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_request(struct zrpc_msghdr *restrict msghdr, struct zrpc_attr **attrs, size_t nattrs)
+{
+	size_t n;
+	struct zrpc_tlvb tlvb;
+
+	if (unlikely(msghdr->crc != ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC))
+		return -EPROTO;
+
+	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
+	zrpc_tlvb_skip(&tlvb, msghdr->len);
+	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
+	if (unlikely(n != nattrs))
+		return -ENODATA;
+
+	return 0;
+}
+
+
+/**
+ * @brief Encode RPC response.
+ *
+ * @param[in] ret RPC return code.
+{% for param in rpc.out_parameters %}
+ * @param[in] {{ param.name | lower }} RPC out parameter {{ param.name }}
+{% endfor %}
+ *
+ * @retval 0      Message successfully populated.
+ * @retval -errno Message population failed.
+ */
+{% if rpc.out_parameters | length %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
+		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc,
+		{{ rpc.out_parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="c_decl") | join(", ") }})
+{% else %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
+		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc)
+{% endif %}
+{
+	int ret = 0;
+	zrpc_tag tag;
+	struct zrpc_tlvb tlvb;
+
+	zrpc_tlvb_init(&tlvb, rspsz - sizeof(*rsphdr), rsphdr->attrs);
+
+	tag = ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET;
+	ret = zrpc_tlvb_put_u32(&tlvb, tag, (uint32_t)rc);
+	{% for param in rpc.out_parameters %}
+
+	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+		{% if param.typedecl.is_ptr %}
+			{% if param.typedecl.is_str %}
+			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
+			{% else %}
+			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
+			{% endif %}
+		{% else %}
+			{% set invocation = "zrpc_tlvb_put_%s(&tlvb, tag, %s)" | format( param.typedecl.ident.name | lower, param.name, ) %}
+		{% endif %}
+	if (likely(!ret))
+		ret = {{ invocation }};
+	{% endfor %}
+
+	rsphdr->id = reqhdr->id;
+	rsphdr->flags = ZRPC_FLAG_REPLY;
+	rsphdr->len = zrpc_tlvb_len(&tlvb);
+	rsphdr->seq = reqhdr->seq;
+	rsphdr->crc = reqhdr->crc;
+
+	return ret;
+}
+
+
+
+/**
+ * @brief Decode and process incoming RPC {{ rpc.name }}.
+ *
+ * @param[in] msghdr The encoded RPC.
+ *
+ * @retval 0      zRPC successfully decoded and processed.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc_msghdr *msghdr)
+{
+	int ret;
+	size_t rspsize = sizeof(struct zrpc_msghdr) +
+		sizeof(struct zrpc_attr) + zrpc_align(sizeof(uint32_t));
+	struct zrpc_msghdr *rsphdr;
+	{% if rpc.in_parameters | length %}
+	struct zrpc_attr *attr;
+		{% for param in rpc.parameters %}
+	{{ param.typedecl.c_decl }}{{ param.name | lower }};
+		{% endfor %}
+	struct zrpc_attr *attrs[] = {
+		{% for param in rpc.in_parameters %}
+		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		{% endfor %}
+	};
+	{% endif %}
+	{% if rpc.out_parameters | length %}
+	bool alloc_ok = true;
+	void *dynaddrs[{{ rpc.out_parameters | length }}u] = { 0 };
+	{% endif %}
+	{% if rpc.in_parameters | length %}
+	ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_decode_request(msghdr, attrs,
+			ARRAY_SIZE(attrs));
+	if (ret)
+		return ret;
+	{% else %}
+	ret = 0;
+	{% endif %}
+	{% for param in rpc.in_parameters %}
+
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+	memcpy(&{{ param.name | lower }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+	{% endfor %}
+	{% for param in rpc.out_parameters %}
+
+	{{ param.name | lower }} = zrpc_{{ channel.name | lower}}_heap_alloc({{ param.size }});
+	alloc_ok &= !!{{ param.name | lower }};
+	dynaddrs[{{ loop.index - 1 }}u] = {{ param.name | lower }};
+	rspsize += {{ param.size }};
+	{% endfor %}
+
+	{% if rpc.in_parameters | length %}
+	if (unlikely(!alloc_ok))
+		ret = -ENOMEM;
+	{% endif %}
+
+	rsphdr = NULL;
+	if (!ret) {
+		rsphdr = zrpc_{{ channel.name | lower }}_heap_alloc(rspsize);
+		if (unlikely(!rsphdr))
+			ret = -ENOMEM;
+	}
+	if (!ret)
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	if (ret >= 0)
+	{% if rpc.out_parameters | length %}
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret,
+				{{rpc.out_parameters | map(attribute="name") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="name") | join(", ") }});
+	{% else %}
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret);
+	{% endif %}
+	if (!ret)
+		ret = zrpc_send({{ channel.name }}_dev, rsphdr);
+
+	if (rsphdr)
+		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);
+
+	{% if rpc.in_parameters | length %}
+	for (unsigned int i = 0u; i < ARRAY_SIZE(dynaddrs); ++i) {
+		if (!dynaddrs[i])
+			continue;
+		zrpc_{{ channel.name | lower }}_heap_free(dynaddrs[i]);
+	}
+	{% endif %}
+
+	return ret;
+}
+{% endfor %}
+
+
+#else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+{% for rpc in channel.rpcs_to_remote %}
+
+/**
+ * @brief Decode {{ rpc.name }} RPC.
+ *
+ * @param[in]  msghdr The message to decode.
+ * @param[out] attrs  Attribute map to distribute the attributes in @c msghdr across.
+ * @param[in]  nattrs Number of attributes at @c attrs.
+ *
+ * @retval 0        Message successfully decoded.
+ * @retval -EPROTO  Peer implements a different RPC protocol.
+ * @retval -ENODATA At least one attribute is missing.
+ */
+static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_request(struct zrpc_msghdr *restrict msghdr, struct zrpc_attr **attrs, size_t nattrs)
+{
+	size_t n;
+	struct zrpc_tlvb tlvb;
+
+	if (unlikely(msghdr->crc != ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_CRC))
+		return -EPROTO;
+
+	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
+	zrpc_tlvb_skip(&tlvb, msghdr->len);
+	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
+	if (unlikely(n != nattrs))
+		return -ENODATA;
+
+	return 0;
+}
+
+
+/**
+ * @brief Encode RPC response.
+ *
+ * @param[in] ret RPC return code.
+{% for param in rpc.out_parameters %}
+ * @param[in] {{ param.name | lower }} RPC out parameter {{ param.name }}
+{% endfor %}
+ *
+ * @retval 0      Message successfully populated.
+ * @retval -errno Message population failed.
+ */
+{% if rpc.out_parameters | length %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
+		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc,
+		{{ rpc.out_parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="c_decl") | join(", ") }})
+{% else %}
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
+		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc)
+{% endif %}
+{
+	int ret = 0;
+	zrpc_tag tag;
+	struct zrpc_tlvb tlvb;
+
+	zrpc_tlvb_init(&tlvb, rspsz - sizeof(*rsphdr), rsphdr->attrs);
+
+	tag = ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET;
+	ret = zrpc_tlvb_put_u32(&tlvb, tag, (uint32_t)rc);
+	{% for param in rpc.out_parameters %}
+
+	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+		{% if param.typedecl.is_ptr %}
+			{% if param.typedecl.is_str %}
+			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
+			{% else %}
+			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
+			{% endif %}
+		{% else %}
+			{% set invocation = "zrpc_tlvb_put_%s(&tlvb, tag, %s)" | format( param.typedecl.ident.name | lower, param.name, ) %}
+		{% endif %}
+	if (likely(!ret))
+		ret = {{ invocation }};
+	{% endfor %}
+
+	rsphdr->id = reqhdr->id;
+	rsphdr->flags = ZRPC_FLAG_REPLY;
+	rsphdr->len = zrpc_tlvb_len(&tlvb);
+	rsphdr->seq = reqhdr->seq;
+	rsphdr->crc = reqhdr->crc;
+
+	return ret;
+}
+
+
+
+/**
+ * @brief Decode and process incoming RPC {{ rpc.name }}.
+ *
+ * @param[in] msghdr The encoded RPC.
+ *
+ * @retval 0      zRPC successfully decoded and processed.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc_msghdr *msghdr)
+{
+	int ret;
+	size_t rspsize = sizeof(struct zrpc_msghdr) +
+		sizeof(struct zrpc_attr) + zrpc_align(sizeof(uint32_t));
+	struct zrpc_msghdr *rsphdr;
+	{% if rpc.in_parameters | length %}
+	struct zrpc_attr *attr;
+		{% for param in rpc.parameters %}
+	{{ param.typedecl.c_decl }}{{ param.name | lower }};
+		{% endfor %}
+	struct zrpc_attr *attrs[] = {
+		{% for param in rpc.in_parameters %}
+		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		{% endfor %}
+	};
+	{% endif %}
+	{% if rpc.out_parameters | length %}
+	bool alloc_ok = true;
+	void *dynaddrs[{{ rpc.out_parameters | length }}u] = { 0 };
+	{% endif %}
+	{% if rpc.in_parameters | length %}
+	ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_decode_request(msghdr, attrs,
+			ARRAY_SIZE(attrs));
+	if (ret)
+		return ret;
+	{% else %}
+	ret = 0;
+	{% endif %}
+	{% for param in rpc.in_parameters %}
+
+	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+	memcpy(&{{ param.name | lower }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+	{% endfor %}
+	{% for param in rpc.out_parameters %}
+
+	{{ param.name | lower }} = zrpc_{{ channel.name | lower}}_heap_alloc({{ param.size }});
+	alloc_ok &= !!{{ param.name | lower }};
+	dynaddrs[{{ loop.index - 1 }}u] = {{ param.name | lower }};
+	rspsize += {{ param.size }};
+	{% endfor %}
+
+	{% if rpc.in_parameters | length %}
+	if (unlikely(!alloc_ok))
+		ret = -ENOMEM;
+	{% endif %}
+
+	rsphdr = NULL;
+	if (!ret) {
+		rsphdr = zrpc_{{ channel.name | lower }}_heap_alloc(rspsize);
+		if (unlikely(!rsphdr))
+			ret = -ENOMEM;
+	}
+	if (!ret)
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	if (ret >= 0)
+	{% if rpc.out_parameters | length %}
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret,
+				{{rpc.out_parameters | map(attribute="name") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="name") | join(", ") }});
+	{% else %}
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret);
+	{% endif %}
+	if (!ret)
+		ret = zrpc_send({{ channel.name }}_dev, rsphdr);
+
+	if (rsphdr)
+		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);
+
+	{% if rpc.in_parameters | length %}
+	for (unsigned int i = 0u; i < ARRAY_SIZE(dynaddrs); ++i) {
+		if (!dynaddrs[i])
+			continue;
+		zrpc_{{ channel.name | lower }}_heap_free(dynaddrs[i]);
+	}
+	{% endif %}
+
+	return ret;
+}
+{% endfor %}
+
+
+#endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+
+
+int zrpc_{{ channel.name | lower }}_rx(struct zrpc_msghdr *msghdr)
+{
+	int ret;
+	switch (msghdr->id) {
+#if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+	{% for rpc in channel.rpcs_to_host %}
+	/* RPC {{ rpc.name }} */
+	case ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }}:
+		ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(msghdr);
+		break;
+	{% endfor %}
+#else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+	{% for rpc in channel.rpcs_to_remote %}
+	/* RPC {{ rpc.name }} */
+	case ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }}:
+		ret = zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(msghdr);
+		break;
+	{% endfor %}
+#endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+	default:
+		return -ENOTSUP;
+	}
+
+	return ret;
+}
+
+/** @} */

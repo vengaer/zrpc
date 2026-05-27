@@ -1,0 +1,124 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file
+ * @ingroup zrpc_channel
+ * @brief zRPC common channel header.
+ */
+
+#ifndef ZEPHYR_INCLUDE_RPC_ZRPC_CHANNELS_H_
+#define ZEPHYR_INCLUDE_RPC_ZRPC_CHANNELS_H_
+
+#include <stdint.h>
+
+#include <zephyr/kernel.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief zRPC common channel interface.
+ * @ingroup zrpc_channel
+ * @{
+ */
+
+struct zrpc_msghdr;
+
+
+/**
+ * @brief Look up channel device.
+ *
+ * Look up channel device by matching the <cc>zrpc,channel-id</cc> devicetree
+ * property against the channel id specified for the channel in the
+ * configuration file.
+ *
+ * Fails to compile if no matching channel is found.
+ *
+ * @note @c DT_DRV_COMPAT @b must be defined as @c zrpc_channel.
+ *
+ * @code{.c}
+ *
+ * // MUST be zrpc_channel, matching is done using channel ids.
+ * #define DT_DRV_COMPAT zrpc_channel
+ *
+ * // Get device associated with node with channel id 0.
+ * struct device const *dev =
+ *	DT_INST_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_DEV_LOOKUP, 0);
+ * @endcode
+ *
+ * @param n          The instance identifier.
+ * @param channel_id Numeric identifier of the channel.
+ *
+ * @return Address of the matching device.
+ */
+#define ZRPC_CHANNEL_DEV_LOOKUP(n, channel_id)					\
+	COND_CODE_1(								\
+		IS_EQ(DT_INST_PROP(n, zrpc_channel_id), channel_id),		\
+		(DEVICE_DT_INST_GET(n)),					\
+		(EMPTY)								\
+	)
+
+
+#if defined CONFIG_ZRPC_HEAP_TYPE_PER_CHANNEL || defined __DOXYGEN__
+/**
+ * @brief Get the zrpc,heap-size attribute for the current RPC channel.
+ *
+ * @note @c DT_DRV_COMPAT must be defined as @c zrpc_channel.
+ *
+ * @details Available only if @c CONFIG_ZRPC_HEAP_TYPE_PER_CHANNEL is set.
+ *
+ * @param n          The instance identifier.
+ * @param channel_id Numeric identifier of the channel.
+ *
+ * @return Value of the zrpc,heap-size attribute for the device node
+ */
+#define ZRPC_CHANNEL_HEAP_SIZE(n)						\
+	COND_CODE_1(								\
+		IS_EQ(DT_INST_PROP(n, zrpc_channel_id), channel_id),		\
+		(DT_INST_PROP(n, zrpc_heap_size)),				\
+		(EMPTY)								\
+	)
+#endif
+
+#if defined CONFIG_ZRPC_HEAP_TYPE_GLOBAL || defined __DOXYGEN__
+
+/**
+ * @brief Global zRPC heap mutex.
+ *
+ * @details Available only if @c CONFIG_ZRPC_HEAP_TYPE_GLOBAL is set.
+ */
+extern struct k_mutex zrpc_gbl_heap_mutex;
+
+/**
+ * @brief Global zRPC heap.
+ *
+ * @details Available only if @c CONFIG_ZRPC_HEAP_TYPE_GLOBAL is set.
+ */
+extern struct k_heap zrpc_gbl_heap;
+
+#endif
+
+
+/**
+ * @brief Dispatch incoming RPC for processing.
+ *
+ * @param channel_id ID of the channel on which the RPC was received.
+ * @param msghdr     The received message.
+ *
+ * @retval 0      The RPC was successfully processed.
+ * @retval -errno An error occurred.
+ */
+int zrpc_rx_dispatch(uint32_t channel_id, struct zrpc_msghdr *msghdr);
+
+/** @} */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ZEPHYR_INCLUDE_RPC_ZRPC_CHANNELS_H_ */

@@ -1,0 +1,98 @@
+# Copyright (c) 2026 Vilhelm Engström
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# zRPC core configuration file schema
+#
+# Example configuration:
+#
+#   channels:
+#     - name: virtio
+#       id: 0
+#       rpcs:
+#         - name: get_uid
+#           parameters:
+#             - name: uid
+#               type: uint8_t *
+#               size: *uid-size
+#               description: Buffer to store the retrieved UID in.
+#               direction: out
+#             - name: *uid-size
+#               type: uint32_t
+#               description: Size of the buffer at @c uid.
+#           brief: Get MCU UID
+#           description: |
+#             The stm32h755 MCU comes with a unique 96-bit identifier accessible
+#             from the Cortex-M7 CPU. Fetch this identifier via RPC.
+#           origin: [ host ]
+
+# Sequence of RPC channels
+type: map
+mapping:
+  channels:
+    type: seq
+    sequence:
+      - type: map
+        mapping:
+          # Name of the channel
+          name:
+            type: str
+            required: true
+          # Channel identifier
+          id:
+            type: int
+            required: true
+          # List of RPCs defined for the channel
+          rpcs:
+            type: seq
+            sequence:
+              - type: map
+                mapping:
+                  # Name of the RPC
+                  name:
+                    type: str
+                    required: true
+                  parameters:
+                    type: seq
+                    sequence:
+                      - type: map
+                        mapping:
+                          # Name of the parameter
+                          name:
+                            type: str
+                            required: true
+                          # Type of the parameter
+                          type:
+                            type: str
+                            required: true
+                          # Optional name of parameter holding size of sequence, required
+                          # if the parameter is a non-terminated binary sequence.
+                          size:
+                            type: str
+                          # Parameter description
+                          description:
+                            type: str
+                          # Direction
+                          direction:
+                            type: str
+                            enum:
+                              - in
+                              - out
+                              - inout
+                  # Brief description of the RPC
+                  brief:
+                    type: str
+                  # More exhaustive description of the RPC
+                  description:
+                    type: str
+                  # From where the RPC is emitted. host == master, remote == slave.
+                  origin:
+                    type: seq
+                    sequence:
+                      - type: str
+                        enum:
+                          - host
+                          - remote
+            required: true
+          description:
+            type: str

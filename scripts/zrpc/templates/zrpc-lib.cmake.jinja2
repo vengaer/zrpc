@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Vilhelm Engström
+#
+# SPDX-License-Identifier: Apache-2.0
+
+zephyr_include_directories({{ outdir }}/include)
+
+zephyr_library_sources({{ outdir }}/src/zrpc-channels.c)
+{% for channel in spec.channels %}
+zephyr_library_sources({{ outdir }}/src/zrpc-channel-{{ channel.name }}.c)
+{% endfor %}
