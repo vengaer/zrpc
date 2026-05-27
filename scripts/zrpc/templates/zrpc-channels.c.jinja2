@@ -1,0 +1,45 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file
+ * @ingroup zrpc_channel
+ * @brief zRPC common channel source file.
+ */
+
+#include <zephyr/rpc/zrpc-channels.h>
+{% for channel in spec.channels %}
+#include <zephyr/rpc/zrpc-channel-{{ channel.name | lower }}.h>
+{% endfor %}
+
+/**
+ * @ingroup zrpc_channel
+ * @{
+ */
+
+K_MUTEX_DEFINE(zrpc_gbl_heap_mutex);
+
+K_HEAP_DEFINE(zrpc_gbl_heap, CONFIG_ZRPC_GLOBAL_HEAP_SIZE);
+
+
+int zrpc_rx_dispatch(uint32_t channel_id, struct zrpc_msghdr *msghdr)
+{
+	int ret;
+	switch (channel_id) {
+{% for channel in spec.channels %}
+	case {{ channel.chid }}: /* Channel {{ channel.name }} */
+		ret = zrpc_{{ channel.name | lower }}_rx(msghdr);
+		break;
+{% endfor %}
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+/** @} */

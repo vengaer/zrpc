@@ -1,0 +1,315 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @brief zRPC channel {{ channel.name }} header.
+ */
+
+#ifndef ZEPHYR_INCLUDE_RPC_ZRPC_CHANNEL_{{ channel.name | upper }}_H_
+#define ZEPHYR_INCLUDE_RPC_ZRPC_CHANNEL_{{ channel.name | upper }}_H_
+
+#include <assert.h>
+
+#include <zephyr/rpc/zrpc.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** compatible = "zrpc,channel"; */
+#define DT_DRV_COMPAT zrpc_channel
+
+/**
+ * @brief Determine whether or not the channel is in host mode.
+ *
+ * This is ultimately determined by whether or not the @c zrpc,host boolean
+ * property is set in the associated device node.
+ *
+ * @param n          Device instance number.
+ * @param channel_id ID of the channel being processed.
+ *
+ * @retval 0 The channel is not in host mode.
+ * @retval 1 The channel is in host mode.
+ */
+#define ZRPC_CHANNEL_{{ channel.name | upper }}_CHECK_HOST_MODE_(n, channel_id)	\
+	COND_CODE_1(								\
+		IS_EQ(DT_INST_PROP(n, zrpc_channel_id), channel_id),		\
+		(								\
+			COND_CODE_1(						\
+				DT_PROP(DT_DRV_INST(n), zrpc_host),		\
+				(1),						\
+				(0)						\
+			)							\
+		),								\
+		(EMPTY)								\
+	)
+
+/** Check for mode of {{ channel.name }} in a single channel */
+#define ZRPC_CHANNEL_{{ channel.name | upper }}_CHECK_HOST_MODE(n)	\
+	ZRPC_CHANNEL_{{ channel.name | upper}}_CHECK_HOST_MODE_(	\
+		n, {{ channel.chid }}					\
+	)
+
+/** Set to 1 if {{ channel.name }} is in host mode */
+#define ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE		\
+	DT_INST_FOREACH_STATUS_OKAY(					\
+		ZRPC_CHANNEL_{{ channel.name | upper }}_CHECK_HOST_MODE	\
+	)
+
+/**
+ * @brief zRPC channel {{ channel.name }} interface.
+ * @defgroup zrpc_channel_{{ channel.name }} zRPC channel {{ channel.name }}
+ * @ingroup zrpc_channel
+ * @{
+{% if channel.description %}
+ *
+ * {{ channel.description }}
+{% endif %}
+ */
+
+
+/** RPC identifiers for channel {{ channel.name }} */
+enum zrpc_{{ channel.name | lower }}_rpc_id {
+{% for rpc in channel.rpcs %}
+	/** RPC {{ rpc.name }} */
+	{{ "%-42s" | format ("ZRPC_%s_RPC_ID_%s" | format( channel.name | upper, rpc.name | upper, )) }} = {{ loop.index - 1 }},
+{% endfor %}
+	/** Marker */
+	ZRPC_{{ channel.name | upper }}_RPC_ID_AFTER_LAST_,
+	/** Max RPC id for channel {{ channel.name }} */
+	{{ "%-42s" | format ("ZRPC_%s_RPC_ID_MAX" | format( channel.name | upper, )) }} = ZRPC_{{ channel.name | upper }}_RPC_ID_AFTER_LAST_ - 1,
+};
+
+{% for rpc in channel.rpcs %}
+/** RPC {{ rpc.name }} parameter identifiers */
+enum {
+	/** Return code */
+	ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET,
+	{# Place out-parameters first to keep out arrays as small as possible #}
+	{% for param in rpc.out_parameters %}
+	/** RPC parameter {{ param.name }} */
+	ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
+	{% endfor %}
+	{% for param in rpc.in_parameters %}
+		{# Parameters may be both in and out #}
+		{% if not param.is_out_parameter %}
+	/** RPC parameter {{ param.name }} */
+	ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
+		{% endif %}
+	{% endfor %}
+	/** Marker, unused */
+	ZRPC_{{ rpc.name | upper }}_PARAM_AFTER_LAST_,
+	/** Maximum parameter identifier */
+	ZRPC_{{ rpc.name | upper }}_MAX = ZRPC_{{ rpc.name | upper }}_PARAM_AFTER_LAST_ - 1,
+};
+static_assert(ZRPC_{{ rpc.name | upper }}_MAX <= ZRPC_TAG_MAX,
+	"RPC {{ rpc.name }} names too many parameters");
+
+{% endfor %}
+
+/**
+ * @brief Outgoing RPCs for channel {{ channel.name }}
+ * @defgroup zrpc_channel_{{ channel.name}}_out
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @{
+ */
+
+#if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+{% for rpc in channel.rpcs_from_host %}
+
+
+/**
+{% if rpc.brief %}
+ * @brief {{ rpc.brief }}
+{% else %}
+ *
+{% endif %}
+{% if rpc.description %}
+ *
+{% for line in rpc.description.split('\n') %}
+ * {{ line }}
+{% endfor %}
+{% endif %}
+{% for param in rpc.non_void_parameters %}
+	{% if param.description %}
+		{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% if rpc.non_void_parameters | length %}
+ *
+{% endif %}
+ * @retval >= 0       Success.
+ * @retval -ENOMEM    zRPC heap exhausted.
+ * @retval -ENODATA   Peer omitted one or more attributes.
+ * @retval -ENOBUFS   Peer wrote a value too large for an out parameter.
+ * @retval -EOVERFLOW Message size would overflow length field of the header.
+ * @retval -errno     Some other error occurred.
+ */
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }});
+
+{% endfor %}
+
+
+#else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+{% for rpc in channel.rpcs_from_remote %}
+
+
+/**
+{% if rpc.brief %}
+ * @brief {{ rpc.brief }}
+{% else %}
+ *
+{% endif %}
+{% if rpc.description %}
+ *
+{% for line in rpc.description.split('\n') %}
+ * {{ line }}
+{% endfor %}
+{% endif %}
+{% for param in rpc.non_void_parameters %}
+	{% if param.description %}
+		{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% if rpc.non_void_parameters | length %}
+ *
+{% endif %}
+ * @retval >= 0       Success.
+ * @retval -ENOMEM    zRPC heap exhausted.
+ * @retval -ENODATA   Peer omitted one or more attributes.
+ * @retval -ENOBUFS   Peer wrote a value too large for an out parameter.
+ * @retval -EOVERFLOW Message size would overflow length field of the header.
+ * @retval -errno     Some other error occurred.
+ */
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }});
+
+{% endfor %}
+
+
+#endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+
+
+/** @} */
+
+/**
+ * @brief Incoming RPCs for channel {{ channel.name }}
+ * @defgroup zrpc_channel_{{ channel.name}}_in
+ * @ingroup zrpc_channel_{{ channel.name }}
+ * @{
+ *
+ * Incoming RPCs are invoked by the zRPC core upon receiving
+ * the appropriate RPC. For each incoming RPC, the serving side
+ * must implement the corresponding @c _serve function declared as
+ * @c extern further down.
+ */
+
+#if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+{% for rpc in channel.rpcs_to_host %}
+
+
+/**
+ * @brief Handle incoming RPC {{ rpc.name }}.
+{% if rpc.description %}
+ *
+{% for line in rpc.description.split('\n') %}
+ * {{ line }}
+{% endfor %}
+{% endif %}
+{% for param in rpc.non_void_parameters %}
+	{% if param.description %}
+		{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% if rpc.non_void_parameters | length %}
+ *
+{% endif %}
+ * @retval >= 0   Success.
+ * @retval -errno An error occurred.
+ */
+extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({% for param in rpc.parameters %}{{ param.c_decl }}{{ ", " if not loop.last }}{% endfor %});
+
+{% endfor %}
+
+
+#else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+{% for rpc in channel.rpcs_to_remote %}
+
+
+/**
+ * @brief Handle incoming RPC {{ rpc.name }}.
+{% if rpc.description %}
+ *
+{% for line in rpc.description.split('\n') %}
+ * {{ line }}
+{% endfor %}
+{% endif %}
+{% for param in rpc.non_void_parameters %}
+	{% if param.description %}
+		{% if param.is_in_parameter and param.is_out_parameter %}
+ * @param[in, out] {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% elif param.is_in_parameter %}
+ * @param[in]      {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% else %}
+ * @param[out]     {{ "%-20s" | format( param.name, ) }} {{ param.description }}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% if rpc.non_void_parameters | length %}
+ *
+{% endif %}
+ * @retval >= 0   Success.
+ * @retval -errno An error occurred.
+ */
+extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({% for param in rpc.parameters %}{{ param.c_decl }}{{ ", " if not loop.last }}{% endfor %});
+
+{% endfor %}
+
+
+#endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+
+
+/**
+ * @brief Decode and process incoming RPC.
+ *
+ * @param msghdr The encoded RPC.
+ *
+ * @retval 0      RPC successfully processed.
+ * @®etval -errno An error occurred.
+ */
+int zrpc_{{ channel.name | lower }}_rx(struct zrpc_msghdr *msghdr);
+
+/** @} */
+
+
+/** @} */
+
+#undef DT_DRV_COMPAT
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ZEPHYR_INCLUDE_RPC_ZRPC_CHANNEL_{{ channel.name | upper }}_H_ */
