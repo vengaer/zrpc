@@ -1,0 +1,91 @@
+# Copyright (c) 2026 Vilhelm Engström
+
+# SPDX-License-Identifier: Apache-2.0
+
+config ZRPC
+	bool "Enable zRPC remote procedure calls"
+	default n
+	help
+	  Enable the zRPC implementation core.
+
+if ZRPC
+
+module = ZRPC
+module-str = zRPC
+source "subsys/logging/Kconfig.template.log_config"
+
+config ZRPC_PEDANTIC
+	bool "Enable pedantic zRPC checks"
+	default y
+	help
+	  Enable pedantic checks to prevent potential exploits. This
+	  comes at a small cost in terms of both runtime and binary size.
+
+	  If unsure, say y.
+
+config ZRPC_CONFIGURATION
+	string "Path to the zRPC configuration file"
+	default ""
+	help
+	  Path to the zRPC configuration file for the endpoints. Either absolute
+	  or relative the west workspace.
+
+choice ZRPC_HEAP_TYPE
+	prompt "Type of heap the zRPC core should use"
+	default ZRPC_HEAP_TYPE_GLOBAL
+
+config ZRPC_HEAP_TYPE_GLOBAL
+	bool "Use global heap"
+	help
+	  Use a single, global heap for all channels. Typically more memory-efficient
+	  but requires less granular locking.
+
+	  Size of the heap is determined by the ZRPC_GLOBAL_HEAP_SIZE configuration option.
+
+config ZRPC_HEAP_TYPE_PER_CHANNEL
+	bool "Use per-channel heap"
+	help
+	  Use per-channel heap. Size of said heap is determined by the zrpc,heap-size
+	  devicetree property in the associated node.
+
+endchoice
+
+if ZRPC_HEAP_TYPE_GLOBAL
+
+config ZRPC_GLOBAL_HEAP_SIZE
+	int "Size of the zRPC heap"
+	default 256
+	help
+	  Size of the global zRPC heap used to temporarily store encoded RPCs.
+
+endif # ZRPC_GLOBAL_HEAP_SIZE
+
+DT_COMPAT_ZRPC_VIRTIO_CHANNEL = zrpc,virtio-channel
+DT_PROP_ZRPC_HOST = zrpc,host
+
+config ZRPC_BACKEND_VIRTIO
+	bool "Enable hypervisorless virtio zRPC backend"
+	default y
+	depends on DT_HAS_ZRPC_VIRTIO_CHANNEL_ENABLED
+	select IPM
+	select OPENAMP
+	select OPENAMP_MASTER if $(dt_compat_any_has_prop,$(DT_COMPAT_ZRPC_VIRTIO_CHANNEL),$(DT_PROP_ZRPC_HOST))
+	help
+	  The hypervisorless virtio zRPC backend enables zRPC over an OpenAMP shared memory
+	  channel.
+
+if ZRPC_BACKEND_VIRTIO
+
+config ZRPC_VIRTIO_INIT_PRIORITY
+	int "Init priority for the virtio backend"
+	default 48
+	help
+	  Init priority of the virtio zRPC backend.
+
+module = ZRPC_VIRTIO
+module-str = zRPC virtio backend
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZRPC_BACKEND_VIRTIO
+
+endif # ZRPC

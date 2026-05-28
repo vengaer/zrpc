@@ -1,0 +1,56 @@
+# Copyright (c) 2026 Vilhelm Engström
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  zRPC generic channel.
+
+compatible: zrpc,channel
+
+include: base.yaml
+
+properties:
+  zrpc,channel-id:
+    type: int
+    required: true
+    description: |
+      Numeric identifier of the channel to attach to the medium.
+
+      Should match the ID of one of the channels in the zRPC configuration file. The RPCs
+      defined for said channels are made available for the channel node.
+
+  zrpc,host:
+    type: boolean
+    description: |
+      Set to configure zRPC node in host mode. Must be set for exactly one of the peers
+      in a pair.
+
+  zrpc,heap-size:
+    type: int
+    default: 256
+    description: |
+      Size of the per-channel heap, in bytes. Used only if CONFIG_ZRPC_HEAP_TYPE_PER_CHANNEL is set.
+
+examples:
+  - |
+    /* In devicetree */
+    &sram4 {
+      virtio_channel_0: memory@38000000 {
+        compatible = "zrpc,virtio-channel";
+                     "zrpc,channel";
+        zrpc,channel-id = <0>; /* Attach the virito channel from the configuration */
+      };
+    };
+
+    # In zRPC configuration
+    channels:
+      - name: virtio
+        id: 0  # Attached to the virtio_channel_0 device
+        rpcs:
+          - name: heartbeat
+            brief: Send heartbeat to peer.
+            description: |
+              Send a heartbeat RPC to the peer.
+            origin: [ controller, target ]
+        description:
+          VirtIO-backed shared memory channel.
