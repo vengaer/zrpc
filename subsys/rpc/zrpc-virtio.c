@@ -1,0 +1,1002 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * @file
+ * @ingroup zrpc_backend
+ * @brief zRPC hypervisorless virtio backend implementation.
+ */
+
+#include <assert.h>
+#include <stdalign.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/ipm.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/rpc/zrpc.h>
+#include <zephyr/rpc/zrpc-tlv.h>
+#include <zephyr/rpc/zrpc-channels.h>
+#include <zephyr/sys/slist.h>
+
+#include <openamp/open_amp.h>
+#include <openamp/rpmsg_virtio.h>
+
+/**
+ * @brief zRPC hypervisorless virtio backend.
+ * @defgroup zrpc_virtio zRPC virtio backend.
+ * @ingroup zrpc_backend
+ * @{
+ *
+ * The virtio zRPC backend leverages OpenAMP's RPmsg implementation to
+ * allow RPCs between CPUs on systems using asymmetric multiprocessing.
+ * In brief terms, RPCs are sent via single-producer, single-consumer ring
+ * buffers located in shared memory.
+ */
+
+
+/** @cond ZEPHYR_INTERNALS */
+LOG_MODULE_REGISTER(zrpc_virtio, CONFIG_ZRPC_VIRTIO_LOG_LEVEL);
+/** @endcond */
+
+
+/** compatible = zrpc,virtio-channel */
+#define DT_DRV_COMPAT zrpc_virtio_channel
+
+/** Control block */
+struct zrpc_virtio_ctrl_blk {
+	/** Status byte */
+	unsigned char status;
+};
+
+
+/** RX wait node */
+struct zrpc_virtio_wait_node {
+	/** List head for iteration */
+	sys_snode_t head;
+	/** Sequence number of the expected reply */
+	uint16_t seq;
+	/** Condition variable to wait on */
+	struct k_condvar cv;
+	/** Message to pass to reader */
+	struct zrpc_msghdr *msghdr;
+};
+
+
+/** Instance-specific data */
+struct zrpc_virtio_data {
+	/** Work scheduled on IPM callbacks */
+	struct k_work ipm_work;
+	/** IPM work queue */
+	struct k_work_q ipm_work_q;
+	/** Shared memory physical address map */
+	metal_phys_addr_t shm_physmap;
+	/** Shared memory I/O region */
+	struct metal_io_region shm_io;
+	/** Virtio rings */
+	struct virtio_vring_info vrings[2u];
+	/** Virtio device */
+	struct virtio_device vdev;
+	/** Shared memory buffers pool */
+	struct rpmsg_virtio_shm_pool shmpool;
+	/** Rpmsg endpoint */
+	struct rpmsg_endpoint ept;
+	/** Rpmsg virtio device */
+	struct rpmsg_virtio_device rvdev;
+	/** Mutex protecting @c pending_replies */
+	struct k_mutex pending_mutex;
+	/** List of RPCs awaiting replies */
+	sys_slist_t pending_replies;
+	/** Work executed on RPC reception */
+	struct k_work rx_work;
+	/** Queue for received messages */
+	struct k_msgq *rx_queue;
+	/** Queue for replies extracted from @c rx_queue */
+	struct k_msgq *reply_queue;
+	/** <tt>struct zrpc_virtio_wait_node</tt> pool */
+	struct k_mem_slab *wait_slab;
+	/** Address of stack used by IPM thread */
+	k_thread_stack_t *ipm_stack;
+	/** Virtio queues */
+	struct virtqueue *vqueues[2u];
+	/** Owning device */
+	struct device const *dev;
+};
+
+
+/** Instance-specific config */
+struct zrpc_virtio_config {
+	/** Whether or not the endpoint should run in host mode */
+	bool host;
+	/** Base address of the shared memory section */
+	uint32_t shm_addr;
+	/** Size of the shared memory section */
+	uint32_t shm_size;
+	/** Size of the shared memory control block */
+	uint32_t ctrl_blk_size;
+	/** Number of trailing vring extra descriptors */
+	uint32_t num_vq_desc_extra;
+	/** ID of the zRPC channel */
+	uint32_t channel_id;
+	/** Size of the @c ipm_stack in the corresponding data struct */
+	size_t ipm_stack_size;
+	/** Name of the IPM work thread */
+	char const *ipm_thread_name;
+	/** Inter-process mailbox device */
+	struct device const *ipm_dev;
+};
+
+
+/**
+ * @brief Get address of the control block associated with this device.
+ *
+ * @note Entries in this structure should be accessed only using one of the
+ *       @c sys_readN or @c sys_writeN functions.
+ *
+ * @param dev The associated device.
+ *
+ * @return Address of the control block associated with @c dev.
+ */
+static inline struct zrpc_virtio_ctrl_blk *zrpc_virtio_ctrl_blk(
+						struct device const *dev)
+{
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	return (void *)cfg->shm_addr;
+}
+
+
+/**
+ * @brief Get vqueue identifier for @c dev.
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0 This virtqueue has id 0.
+ * @retval 1 This virtqueue has id 1.
+ */
+static inline uint_fast8_t zrpc_virtio_vqueue_id(struct device const *dev)
+{
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	return cfg->host;
+}
+
+
+/**
+ * @brief Get virtqueue associated with @c dev.
+ *
+ * @param dev The device instance.
+ *
+ * @return Address of the virtqueue associated with @c dev.
+ */
+static inline struct virtqueue *zrpc_virtio_this_vqueue(
+			struct device const *dev)
+{
+	struct zrpc_virtio_data *data = dev->data;
+
+	return data->vqueues[zrpc_virtio_vqueue_id(dev)];
+
+}
+
+/**
+ * @brief Get virtio device status.
+ *
+ * @param vdev The <tt>struct virtio_device</tt> instance in the
+ *	       <tt>struct zrpc_virtio_data</tt> of the device.
+ *
+ * @return Status of the device.
+ */
+static unsigned char zrpc_virtio_get_status(struct virtio_device *vdev)
+{
+	struct device const *dev;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(vdev, struct zrpc_virtio_data, vdev);
+	struct zrpc_virtio_config const *cfg;
+	struct zrpc_virtio_ctrl_blk *ctrl_blk;
+
+	dev = data->dev;
+	cfg = dev->config;
+	if (cfg->host)
+		return VIRTIO_CONFIG_STATUS_DRIVER_OK;
+
+	ctrl_blk = zrpc_virtio_ctrl_blk(dev);
+	return sys_read8((mem_addr_t)&ctrl_blk->status);
+}
+
+
+/**
+ * @brief Set status of device.
+ *
+ * @param ctrl_blk_addr Address of the control block.
+ * @param status        The statust to set.
+ */
+static inline void zrpc_virtio_set_status_raw(mem_addr_t ctrl_blk_addr,
+			unsigned char status)
+{
+	struct zrpc_virtio_ctrl_blk *ctrl_blk = (void *)ctrl_blk_addr;
+	sys_write8(status, (mem_addr_t)&ctrl_blk->status);
+}
+
+
+/**
+ * @brief Set status of the virtio device.
+ *
+ * @param vdev   The <tt>struct virtio_device</tt> instance in the
+ *	         <tt>struct zrpc_virtio_data</tt> of the device.
+ * @param status The status to set.
+ */
+static void zrpc_virtio_set_status(struct virtio_device *vdev,
+		unsigned char status)
+{
+	struct device const *dev;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(vdev, struct zrpc_virtio_data, vdev);
+	struct zrpc_virtio_ctrl_blk *ctrl_blk;
+
+	dev = data->dev;
+	ctrl_blk = zrpc_virtio_ctrl_blk(dev);
+	zrpc_virtio_set_status_raw((unsigned long)ctrl_blk, status);
+}
+
+
+/**
+ * @brief Get endpoint features.
+ *
+ * @param vdev, The virtio device associated with the driver instance.
+ *
+ * @return A bitmask of supported features.
+ */
+static uint32_t zrpc_virtio_get_features(struct virtio_device *vdev)
+{
+	return BIT(VIRTIO_RPMSG_F_NS);
+}
+
+
+/**
+ * @brief Notify endpoint of incoming data.
+ *
+ * @param vqueue The virtqueue on which data is available.
+ */
+static void zrpc_virtio_notify(struct virtqueue *vqueue)
+{
+	int ret;
+	struct device const *dev;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(vqueue->vq_dev, struct zrpc_virtio_data, vdev);
+	struct zrpc_virtio_config const *cfg;
+
+	dev = data->dev;
+	cfg = dev->config;
+
+#if defined CONFIG_SOC_AN521 || defined CONFIG_SOC_MUSCA_B1
+	uint32_t core = sse_200_platform_get_cpu_id();
+
+	ret = ipm_send(cfg->ipm_dev, 0, !core, 0, 1);
+#elif defined CONFIG_IPM_STM32_HSEM
+	/* Payload not supported */
+	ret = ipm_send(cfg->ipm_dev, 0, 0, NULL, 0);
+#else
+	ret = ipm_send(cfg->ipm_dev, 0, 0, &(uint32_t){ 0 }, sizeof(uint32_t));
+#endif
+
+	if (ret)
+		LOG_ERR("Error on ipm_send: %d", -ret);
+}
+
+
+/** Virtio dispatchers */
+struct virtio_dispatch const zrpc_virtio_dispatch = {
+	.get_status = zrpc_virtio_get_status,
+	.set_status = zrpc_virtio_set_status,
+	.get_features = zrpc_virtio_get_features,
+	.notify = zrpc_virtio_notify,
+};
+
+
+/**
+ * @brief Attempt to find a node with matching sequence number in pending list.
+ *
+ * @pre The @c pending_mutex must be held.
+ *
+ * If the node is found, it is removed from the pending list.
+ *
+ * @param dev The device instance.
+ * @param seq The sequence number to search for.
+ *
+ * @retval >0   Address of the entry with matching sequence number.
+ * @retval NULL No entry with matchin sequence number found.
+ */
+static struct zrpc_virtio_wait_node *zrpc_virtio_find_and_extract_reply(
+		struct device const *dev, uint16_t seq)
+{
+	sys_snode_t *prev;
+	sys_slist_t *pending;
+	struct zrpc_virtio_wait_node *node, *next;
+	struct zrpc_virtio_data *data = dev->data;
+
+	prev = NULL;
+	pending = &data->pending_replies;
+	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(pending, node, next, head) {
+		if (node->seq == seq) {
+			sys_slist_remove(pending, prev, &node->head);
+			return node;
+		}
+
+		prev = &node->head;
+	}
+
+	return NULL;
+}
+
+
+/**
+ * @brief Await reply with provided @p seq.
+ *
+ * @pre The @c pending_mutex must be held.
+ *
+ * @param dev The device instance.
+ * @param seq The sequence number of the reply.
+ *
+ * @retval 0      Reply received, msghdr available in @p node.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_virtio_await_reply(struct device const *dev, uint16_t seq,
+		struct zrpc_virtio_wait_node *node)
+{
+	int ret;
+	struct zrpc_virtio_data *data = dev->data;
+
+	node->seq = seq;
+	node->msghdr = NULL;
+
+	ret = k_condvar_init(&node->cv);
+	if (ret)
+		return ret;
+
+	sys_slist_append(&data->pending_replies, &node->head);
+	do {
+		ret = k_condvar_wait(&node->cv, &data->pending_mutex,
+			K_MSEC(2000));
+	}  while (!ret && !node->msghdr);
+	sys_slist_find_and_remove(&data->pending_replies, &node->head);
+
+	return ret;
+}
+
+
+/**
+ * @brief Send RPC message to peer.
+ *
+ * @param dev    The device instance.
+ * @param msghdr The encoded RPC to send.
+ *
+ * @retval 0        Message successfully sent.
+ * @retval -EIO     Message couldn not be sent.
+ * @retval -ENOBUFS Only part of the message could be sent.
+ */
+static int zrpc_virtio_send(struct device const *dev,
+		struct zrpc_msghdr const *msghdr)
+{
+	int ret;
+	struct zrpc_virtio_data *data = dev->data;
+
+	ret = rpmsg_send(&data->ept, msghdr, msghdr->len);
+	if (ret < 0)
+		return -EIO;
+
+	if ((size_t)ret < msghdr->len)
+		return -ENOBUFS;
+
+	return 0;
+}
+
+
+/**
+ * @brief Receive reply with sequence number @p seq.
+ *
+ * @param dev      The device instance.
+ * @param seq      The sequence number of the reply.
+ * @param msghdr   Buffer to copy the received reply to.
+ * @param msg_size Size of the buffer at @p msghdr.
+ *
+ * @retval 0        Reply received and availalbe in @p msghdr.
+ * @retval -ENOBUFS Insufficient space at @p msghdr.
+ * @retval -errno   An error occurred.
+ */
+static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
+		struct zrpc_msghdr *msghdr, size_t msg_size)
+{
+	int ret;
+	void *mem;
+	struct zrpc_virtio_wait_node *node;
+	struct zrpc_virtio_data *data = dev->data;
+
+	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(3000));
+	if (ret)
+		return ret;
+
+	node = zrpc_virtio_find_and_extract_reply(dev, seq);
+	if (!node) {
+		ret = k_mem_slab_alloc(data->wait_slab, &mem, K_MSEC(25));
+		node = mem;
+		if (likely(!ret))
+			ret = zrpc_virtio_await_reply(dev, seq, node);
+		else
+			node = NULL;
+		if (unlikely(!ret && node->msghdr->len > msg_size))
+			ret = -ENOBUFS;
+	}
+
+	if (node) {
+		if (!ret)
+			memcpy(msghdr, node->msghdr, node->msghdr->len);
+		k_mem_slab_free(data->wait_slab, node);
+	}
+	k_mutex_unlock(&data->pending_mutex);
+
+	return ret;
+
+}
+
+
+struct zrpc_api const zrpc_virtio_api = {
+	.send = zrpc_virtio_send,
+	.recv = zrpc_virtio_recv,
+};
+
+
+/**
+ * @brief Callback invoked when an rpmsg endpoint is unbound.
+ *
+ * @param ept The just-unbound endpoint.
+ */
+static void zrpc_virtio_rp_unbind_cb(struct rpmsg_endpoint *ept)
+{
+	rpmsg_destroy_ept(ept);
+}
+
+
+/**
+ * @brief Callback invoked whenever data is received on the endpoint.
+ *
+ * @param ept    The endpoint on which the data is received.
+ * @param rpdata Pointer to the data received.
+ * @param len    Length of the data received.
+ * @param src    Sender id.
+ * @param priv   Private data
+ *
+ * @retval RPMSG_SUCCESS Regardless of success or failure (required by OpenAMP).
+ */
+static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
+		size_t len, uint32_t src, void *priv)
+{
+	int ret;
+	struct zrpc_msghdr *msghdr = rpdata;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(ept, struct zrpc_virtio_data, ept);
+
+	if (unlikely(msghdr->len + sizeof(*msghdr) != len)) {
+		LOG_WRN("Discarding malformed message, "
+			"header indictes length %zu, got %u",
+			(size_t)(msghdr->len + sizeof(*msghdr)),
+			(unsigned int)len);
+		/* Rpmsg API requries that RPMSG_SUCCESS is always returned */
+		return RPMSG_SUCCESS;
+	}
+
+	ret = k_msgq_put(data->rx_queue, msghdr, K_NO_WAIT);
+	if (!ret)
+		ret = k_work_submit(&data->rx_work);
+	if (ret)
+		LOG_ERR("Could not queue up processing of incoming RPC: %d",
+			-ret);
+
+	return RPMSG_SUCCESS;
+}
+
+
+/**
+ * @brief Process RPC reply.
+ *
+ * Iterate through the list of pending replies in search of a reply with a
+ * sequence number matching that in @p msghdr. If one is found, signal the
+ * waiting receiver via its condition variable. If no waiter is found,
+ * add the entry to the reply list for the waiter to pick up later.
+ *
+ * @param dev    The device instance.
+ * @param msghdr The received RPC message.
+ *
+ * @retval 0      Reply successfully inserted in the pending list.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_virtio_process_reply(struct device const *dev,
+		struct zrpc_msghdr *msghdr)
+{
+	int ret;
+	bool signalled;
+	void *mem;
+	struct zrpc_virtio_wait_node *node;
+	struct zrpc_virtio_data *data = dev->data;
+
+	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(5000));
+	if (ret) {
+		LOG_ERR("Could not lock pending mutex: %d", -ret);
+		return ret;
+	}
+
+	signalled = false;
+	SYS_SLIST_FOR_EACH_CONTAINER(&data->pending_replies, node, head) {
+		if (node->seq != msghdr->seq)
+			continue;
+
+		node->msghdr = msghdr;
+		k_condvar_signal(&node->cv);
+		signalled = true;
+		break;
+	}
+
+	if (!signalled) {
+		ret = k_mem_slab_alloc(data->wait_slab, &mem, K_MSEC(1000));
+		node = mem;
+		if (!ret) {
+			node->seq = msghdr->seq;
+			node->msghdr = msghdr;
+			sys_slist_append(&data->pending_replies, &node->head);
+		}
+	}
+
+	k_mutex_unlock(&data->pending_mutex);
+	return ret;
+}
+
+
+/**
+ * @brief Work scheduled on endpoint callback.
+ *
+ * @param work The work struct used to schedule the function.
+ */
+static void zrpc_virtio_rp_ept_work(struct k_work *work)
+{
+	int ret;
+	struct device const *dev;
+	struct zrpc_msghdr *msghdr;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(work, struct zrpc_virtio_data, rx_work);
+	struct zrpc_virtio_config const *cfg;
+
+	dev = data->dev;
+	cfg = dev->config;
+
+	ret = k_msgq_get(data->rx_queue, &msghdr, K_NO_WAIT);
+	if (ret) {
+		LOG_ERR("Error extracting message from RX queue: %d", -ret);
+		return;
+	}
+
+	if (msghdr->flags & ZRPC_FLAG_REPLY)
+		ret = zrpc_virtio_process_reply(dev, msghdr);
+	else
+		ret = zrpc_rx_dispatch(cfg->channel_id, msghdr);
+	if (ret)
+		LOG_ERR("Error processing RPC: %d", -ret);
+}
+
+/**
+ * @brief Callback invoked by rpmsg core when the remote has bound its endpoint.
+ *
+ * @param rdev The rpmsg device.
+ * @param name Name of the endpoint.
+ * @param dst  Destination identifier.
+ */
+static void zrpc_virtio_bind_cb(struct rpmsg_device *rdev, char const *name,
+		uint32_t dst)
+{
+	int ret;
+	struct device const *dev;
+	struct zrpc_virtio_data *data;
+	struct rpmsg_virtio_device *rvdev =
+		CONTAINER_OF(rdev, struct rpmsg_virtio_device, rdev);
+	data = CONTAINER_OF(rvdev, struct zrpc_virtio_data, rvdev);
+	dev = data->dev;
+
+	if (name[0] != dev->name[0] || strcmp(&name[1], &dev->name[1]))
+		return;
+
+	ret = rpmsg_create_ept(&data->ept, rdev, name, RPMSG_ADDR_ANY, dst,
+		zrpc_virtio_rp_ept_cb, zrpc_virtio_rp_unbind_cb);
+
+	if (ret)
+		LOG_ERR("Error creating endpoint %s: %d", name, ret);
+}
+
+
+/**
+ * @brief Notify virtqueue of IPM receiver.
+ *
+ * Scheduled from the IPM callback.
+ *
+ * @param work The work which caused the function to be invoked.
+ */
+static void zrpc_virtio_ipm_work(struct k_work *work)
+{
+	uint_fast8_t vqueue_id;
+	struct device const *dev;
+	struct zrpc_virtio_data *data =
+		CONTAINER_OF(work, struct zrpc_virtio_data, ipm_work);
+	dev = data->dev;
+
+	vqueue_id = zrpc_virtio_vqueue_id(dev);
+	virtqueue_notification(zrpc_virtio_this_vqueue(dev));
+}
+
+
+/**
+ * @brief Callback invoked by IPM subsystem.
+ *
+ * @param ipm_dev   The IPM device.
+ * @param user_data Address of the associated virtio device.
+ * @param id        Message type identifier.
+ * @param ipmdata   Message data pointer.
+ */
+static void zrpc_virtio_ipm_cb(struct device const *ipm_dev, void *user_data,
+		uint32_t id, void volatile *ipmdata)
+{
+	struct zrpc_virtio_data *data = user_data;
+
+	k_work_submit_to_queue(&data->ipm_work_q, &data->ipm_work);
+}
+
+
+/**
+ * @brief Get address of the shared I/O region.
+ *
+ * @param dev The device instance.
+ *
+ * @return Address of the shared I/O region associated with @c dev.
+ */
+static inline unsigned long zrpc_virtio_io_addr(struct device const *dev)
+{
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	return cfg->shm_addr + cfg->ctrl_blk_size;
+}
+
+
+/**
+ * @brief Get size of the shared I/O region.
+ *
+ * @param dev The device instance.
+ *
+ * @return Size of the shared I/O region associated with @c dev.
+ */
+static inline uint32_t zrpc_virtio_io_size(struct device const *dev)
+{
+	struct zrpc_virtio_config const *cfg = dev->config;
+	return cfg->shm_size - cfg->ctrl_blk_size;
+}
+
+
+/**
+ * @brief Initialize shared memory region.
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0       Region successfully initialized.
+ * @retval -EFAULT Shared memory region could not be created/accessed.
+ */
+static int zrpc_virtio_init_metal(struct device const *dev)
+{
+	int ret;
+	struct zrpc_virtio_data *data = dev->data;
+	struct metal_init_params metal_params = METAL_INIT_DEFAULTS;
+
+	ret = metal_init(&metal_params);
+	if (ret)
+		return -EFAULT;
+
+	data->shm_physmap = zrpc_virtio_io_addr(dev);
+	metal_io_init(&data->shm_io, (void *)data->shm_physmap,
+		&data->shm_physmap, zrpc_virtio_io_size(dev), -1, 0, NULL);
+
+	return 0;
+}
+
+
+/**
+ * @brief Allocate virtqueues for @c dev.
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0       Queues successfully allocated.
+ * @retval -ENOMEM Allocation failure.
+ */
+static int zrpc_virtio_alloc_vqueues(struct device const *dev)
+{
+	int ret;
+	unsigned int i;
+	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	ret = 0;
+	for (i = 0u; !ret && i < ARRAY_SIZE(data->vqueues); ++i) {
+
+		data->vqueues[i] = virtqueue_allocate(cfg->num_vq_desc_extra);
+		if (!data->vqueues[i])
+			ret = -ENOMEM;
+	}
+
+	for (unsigned int j = 0u; ret && j < i; ++j)
+		virtqueue_free(data->vqueues[j]);
+
+	return ret;
+}
+
+
+/**
+ * @brief Initialize virtio rings.
+ *
+ * @param dev The device instance.
+ */
+static void zrpc_virtio_init_vrings(struct device const *dev)
+{
+	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	for (unsigned int i = 0u; i < ARRAY_SIZE(data->vrings); ++i) {
+		data->vrings[i].io = &data->shm_io;
+		data->vrings[i].info.vaddr =
+			(void *)(cfg->shm_addr + zrpc_virtio_io_size(dev) -
+					!i * cfg->ctrl_blk_size);
+		data->vrings[i].info.num_descs = cfg->num_vq_desc_extra;
+		data->vrings[i].info.align = zrpc_alignto;
+		data->vrings[i].vq = data->vqueues[i];
+	}
+}
+
+
+/**
+ * @brief Initialize virtio device
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0       Rings successfully initialized.
+ * @retval -ENOMEM Virtqueue allocation failure.
+ */
+static int zrpc_virtio_init_vdev(struct device const *dev)
+{
+	int ret;
+	struct virtio_device *vdev;
+	struct zrpc_virtio_data *data = dev->data;
+	unsigned int const roles[] = {
+		[0] = RPMSG_REMOTE,
+		[1] = RPMSG_HOST,
+	};
+
+
+	vdev = &data->vdev;
+
+	ret = zrpc_virtio_alloc_vqueues(dev);
+	if (ret)
+		return ret;
+
+	zrpc_virtio_init_vrings(dev);
+
+	vdev->role = roles[zrpc_virtio_vqueue_id(dev)];
+	vdev->vrings_num = ARRAY_SIZE(data->vrings);
+	vdev->vrings_info = data->vrings;
+	vdev->func = &zrpc_virtio_dispatch;
+
+	return 0;
+}
+
+
+/**
+ * @brief Initialize device's inter-process mailbox.
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0       IPM successfully initialized.
+ * @retval -ENODEV IPM device not ready.
+ * @retval -errno  Some other error occurred.
+ */
+static int zrpc_virtio_init_ipm(struct device const *dev)
+{
+	struct k_work_q *work_q;
+	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
+
+	work_q = &data->ipm_work_q;
+
+	if (!device_is_ready(cfg->ipm_dev))
+		return -ENODEV;
+
+	k_work_queue_start(work_q, data->ipm_stack, cfg->ipm_stack_size,
+		K_HIGHEST_THREAD_PRIO, NULL);
+	k_thread_name_set(&work_q->thread, cfg->ipm_thread_name);
+
+	k_work_init(&data->ipm_work, zrpc_virtio_ipm_work);
+
+	ipm_register_callback(cfg->ipm_dev, zrpc_virtio_ipm_cb, data);
+	return ipm_set_enabled(cfg->ipm_dev, 1);
+}
+
+
+/**
+ * @brief Initialize rpmsg shared memory.
+ *
+ * Set up shared memory buffers and initialize the vdev.
+ *
+ * @param dev The device instance.
+ *
+ * @retval 0      Device syccessfully initialized.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_virtio_init_shm(struct device const *dev)
+{
+	int ret;
+	struct rpmsg_device *rdev;
+	struct zrpc_virtio_data *data = dev->data;
+	struct rpmsg_virtio_shm_pool *shmpool = NULL;
+	struct zrpc_virtio_config const *cfg = dev->config;
+	void (*bind_cb)(struct rpmsg_device *, char const *, uint32_t) = NULL;
+
+	if (cfg->host) {
+		rpmsg_virtio_init_shm_pool(&data->shmpool,
+			(void *)zrpc_virtio_io_addr(dev),
+			zrpc_virtio_io_size(dev));
+		shmpool = &data->shmpool;
+		bind_cb = zrpc_virtio_bind_cb;
+	}
+
+	ret = rpmsg_init_vdev(&data->rvdev, &data->vdev, bind_cb, &data->shm_io,
+				shmpool);
+	if (ret)
+		return -ENODEV;
+
+	if (!cfg->host) {
+		rdev = rpmsg_virtio_get_rpmsg_device(&data->rvdev);
+		if (unlikely(!rdev))
+			return -ENODEV;
+		ret = rpmsg_create_ept(&data->ept, rdev, dev->name,
+			RPMSG_ADDR_ANY, RPMSG_ADDR_ANY, zrpc_virtio_rp_ept_cb,
+			zrpc_virtio_rp_unbind_cb);
+		if (ret)
+			return -EFAULT;
+	}
+
+	return 0;
+}
+
+
+/**
+ * @brief Initialize the virtio backend device.
+ *
+ * @param dev The device to initialize.
+ *
+ * @retval 0      Device successfully initialized.
+ * @retval -errno An error occurred.
+ */
+static int zrpc_virtio_init(struct device const *dev)
+{
+	int ret;
+	struct zrpc_virtio_data *data = dev->data;
+
+	data->dev = dev;
+	k_work_init(&data->rx_work, zrpc_virtio_rp_ept_work);
+	sys_slist_init(&data->pending_replies);
+	k_mutex_init(&data->pending_mutex);
+
+	ret = zrpc_virtio_init_metal(dev);
+	if (!ret)
+		ret = zrpc_virtio_init_vdev(dev);
+	if (!ret)
+		ret = zrpc_virtio_init_ipm(dev);
+	if (!ret)
+		ret = zrpc_virtio_init_shm(dev);
+	return ret;
+}
+
+
+/**
+ * @brief Generate virtio channel instance.
+ *
+ * @param n The device identifier.
+ */
+#define ZRPC_VIRTIO_INIT(n)						\
+	K_THREAD_STACK_DEFINE(						\
+		zrpc_virtio_ipm_stack_ ## n,				\
+		DT_INST_PROP(n, zrpc_virtio_ipm_stack_size)		\
+	);								\
+									\
+	K_MSGQ_DEFINE(							\
+		zrpc_virtio_rx_queue_ ## n,				\
+		sizeof(struct zrpc_msghdr *),				\
+		DT_INST_PROP(n, zrpc_virtio_rx_queue_size),		\
+		alignof(struct zrpc_msghdr *)				\
+	);								\
+									\
+	K_MSGQ_DEFINE(							\
+		zrpc_virtio_reply_queue_ ## n,				\
+		sizeof(struct zrpc_msghdr *),				\
+		DT_INST_PROP(n, zrpc_virtio_reply_queue_size),		\
+		alignof(struct zrpc_msghdr *)				\
+	);								\
+									\
+	K_MEM_SLAB_DEFINE(						\
+		zrpc_virtio_wait_slab_ ## n,				\
+		sizeof(struct zrpc_virtio_wait_node),			\
+		DT_INST_PROP(n, zrpc_virtio_max_concurrent_replies),	\
+		alignof(struct zrpc_virtio_wait_node)			\
+	);								\
+									\
+									\
+	static struct zrpc_virtio_data zrpc_virtio_data_ ## n = {	\
+		.ipm_stack = zrpc_virtio_ipm_stack_ ## n,		\
+		.rx_queue = &zrpc_virtio_rx_queue_ ## n,		\
+		.reply_queue = &zrpc_virtio_reply_queue_ ## n,		\
+		.wait_slab = &zrpc_virtio_wait_slab_ ## n,		\
+	};								\
+									\
+	static_assert(							\
+		DT_INST_PROP(n, zrpc_virtio_ctrl_block_size) >		\
+			sizeof(struct zrpc_virtio_ctrl_blk),		\
+		"Configured control block size is too small"		\
+	);								\
+									\
+	static struct zrpc_virtio_config const zrpc_virtio_cfg_ ## n = {\
+		.host = DT_INST_PROP(					\
+			n, zrpc_host					\
+		),							\
+		.shm_addr = DT_INST_REG_ADDR(n),			\
+		.shm_size = DT_INST_REG_SIZE(n),			\
+		.ctrl_blk_size = DT_INST_PROP(				\
+			n, zrpc_virtio_ctrl_block_size			\
+		),							\
+		.num_vq_desc_extra = DT_INST_PROP(			\
+			n, zrpc_virtio_virtqueue_num_extra_descs	\
+		),							\
+		.channel_id = DT_INST_PROP(n, zrpc_channel_id),		\
+		.ipm_stack_size = K_THREAD_STACK_SIZEOF(		\
+			zrpc_virtio_ipm_stack_ ## n			\
+		),							\
+		.ipm_thread_name = "zRPC virtio IPM thread " #n,	\
+		.ipm_dev = DEVICE_DT_GET(				\
+			DT_INST_PHANDLE(n, zrpc_virtio_ipm_handle)	\
+		),							\
+	};								\
+									\
+	DEVICE_DT_INST_DEFINE(						\
+		n,							\
+		zrpc_virtio_init,					\
+		NULL,							\
+		&zrpc_virtio_data_ ## n,				\
+		&zrpc_virtio_cfg_ ## n,					\
+		POST_KERNEL,						\
+		CONFIG_ZRPC_VIRTIO_INIT_PRIORITY,			\
+		&zrpc_virtio_api					\
+	)								\
+									\
+	static int zrpc_virtio_pre_init_ ## n(void)			\
+	{								\
+		struct zrpc_virtio_config const *cfg =			\
+			&zrpc_virtio_cfg_ ## n;				\
+		if (cfg->host)						\
+			zrpc_virtio_set_status_raw(cfg->shm_addr, 0);	\
+		return 0;						\
+	}								\
+									\
+	SYS_INIT(							\
+		zrpc_virtio_pre_init_ ## n,				\
+		PRE_KERNEL_1,						\
+		CONFIG_KERNEL_INIT_PRIORITY_DEFAULT			\
+	)
+
+DT_INST_FOREACH_STATUS_OKAY(ZRPC_VIRTIO_INIT);
+
+/** @} */

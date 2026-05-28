@@ -1,0 +1,79 @@
+# Copyright (c) 2026, Vilhelm Engström
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  zRPC hypervisorless virtio channel.
+
+include:
+  - name: base.yaml
+  - name: zrpc,channel.yaml
+    property-allowlist:
+      - zrpc,channel-id
+      - zrpc,host
+
+compatible: zrpc,virtio-channel
+
+properties:
+  reg:
+    required: true
+    description: |
+      Address and size of the shared memory area to use.
+
+  zrpc,virtio-ipm-stack-size:
+    type: int
+    default: 2048
+    description: |
+      Size of the stack of the per-backend IPM thread.
+
+  zrpc,virtio-ipm-handle:
+    type: phandle
+    required: true
+    description: |
+      Handle referring to the inter-process mailbox to use.
+
+  zrpc,virtio-ctrl-block-size:
+    type: int
+    default: 0x400
+    description: |
+      Default size of the shared memory control block.
+
+      The backend reserves this number of bytes at the start of the shared memory section identified
+      in the reg property for status flags.
+
+      If unsure, leave unaltered.
+
+  zrpc,virtio-virtqueue-num-extra-descs:
+    type: int
+    default: 16
+    description:
+      Number of struct vq_desc_extra instances to place after each virtqueue.
+
+      If unsure, leave unaltered.
+
+  zrpc,virtio-rx-queue-size:
+    type: int
+    default: 4
+    description: |
+      Number of entries that may be queued up in the RX queue.
+
+      Queued up data is processed almost immediately. This value should rarely be large.
+
+  zrpc,virtio-reply-queue-size:
+    type: int
+    default: 4
+    description: |
+      Number of RPC replies queued up in the driver. This property differs from
+      zrpc,virtio-rx-queue-size in that the latter defines the size of a queue used
+      internally by the driver to pass data from interrupt to process context whereas
+      zrpc,virtio-reply-queue-size determines the size of the queue in which replies
+      that have yet to be extracted by user code are buffered.
+
+      Must like zrpc,virtio-rx-queue-size, this property need rarely be large.
+
+  zrpc,virtio-max-concurrent-replies:
+    type: int
+    default: 4
+    description: |
+      Maximum concurrent number of replies in flight. Once the number is exceeded, newly issued RPCs
+      fail until at least one of the outstanding RPCs has completed.
