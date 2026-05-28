@@ -1,0 +1,29 @@
+/**
+ * Copyright (c) 2026 Vilhelm Engström <vilhelm.engstrom@tuta.io>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&mailbox {
+	status = "okay";
+};
+
+&sram4 {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	status = "okay";
+
+	zrpc_virtio: memory@38000000 {
+		compatible = "zrpc,virtio-channel",
+			     "zrpc,channel";
+		reg = <0x38000000 0x10000>;
+
+		zrpc,channel-id = <0>;
+		zrpc,host;
+
+		zrpc,virtio-ipm-handle = <&mailbox>;
+
+		status = "okay";
+	};
+};

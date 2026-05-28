@@ -1,0 +1,26 @@
+channels:
+  - name: virtio
+    id: 0
+    rpcs:
+      - name: get_uid
+        parameters:
+          - name: uid
+            type: uint8_t *
+            size: &uid-size size
+            description: Buffer to store the retrieved UID in.
+            direction: out
+          - name: *uid-size
+            type: uint32_t
+            description: Size of the buffer at @c uid.
+        brief: Get MCU UID.
+        description: |
+          The stm32h755 MCU comes with a unique 96-bit identifier accessible
+          from the Cortex-M7 CPU. Fetch this identifier via RPC.
+        origin: [ remote, host ]
+      - name: heartbeat
+        brief: Send heartbeat to peer.
+        description: |
+          Send a heartbeat RPC to the peer.
+        origin: [ host, remote ]
+    description:
+      VirtIO-backed shared memory channel.
