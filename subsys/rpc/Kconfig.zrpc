@@ -69,7 +69,7 @@ config ZRPC_BACKEND_VIRTIO
 	depends on DT_HAS_ZRPC_VIRTIO_CHANNEL_ENABLED
 	select IPM
 	select OPENAMP
-	select OPENAMP_MASTER if $(dt_compat_any_has_prop,$(DT_COMPAT_ZRPC_VIRTIO_CHANNEL),$(DT_PROP_ZRPC_HOST))
+	select OPENAMP_MASTER if $(dt_compat_any_has_prop,$(DT_COMPAT_ZRPC_VIRTIO_CHANNEL),$(DT_PROP_ZRPC_HOST),True)
 	help
 	  The hypervisorless virtio zRPC backend enables zRPC over an OpenAMP shared memory
 	  channel.
