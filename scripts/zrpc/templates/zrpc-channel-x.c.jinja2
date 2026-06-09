@@ -669,7 +669,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	if (rsphdr)
 		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);
 
-	{% if rpc.in_parameters | length %}
+	{% if rpc.out_parameters | length %}
 	for (unsigned int i = 0u; i < ARRAY_SIZE(dynaddrs); ++i) {
 		if (!dynaddrs[i])
 			continue;
@@ -845,7 +845,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	if (rsphdr)
 		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);
 
-	{% if rpc.in_parameters | length %}
+	{% if rpc.out_parameters | length %}
 	for (unsigned int i = 0u; i < ARRAY_SIZE(dynaddrs); ++i) {
 		if (!dynaddrs[i])
 			continue;
