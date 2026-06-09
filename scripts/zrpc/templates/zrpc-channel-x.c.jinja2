@@ -643,7 +643,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	rspsize += {{ param.size }};
 	{% endfor %}
 
-	{% if rpc.in_parameters | length %}
+	{% if rpc.out_parameters | length %}
 	if (unlikely(!alloc_ok))
 		ret = -ENOMEM;
 	{% endif %}
@@ -819,7 +819,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	rspsize += {{ param.size }};
 	{% endfor %}
 
-	{% if rpc.in_parameters | length %}
+	{% if rpc.out_parameters | length %}
 	if (unlikely(!alloc_ok))
 		ret = -ENOMEM;
 	{% endif %}
