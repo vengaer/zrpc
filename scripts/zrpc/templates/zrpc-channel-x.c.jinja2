@@ -245,7 +245,7 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
 	zrpc_tlvb_skip(&tlvb, msghdr->len);
 	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
-	if (unlikely(n != nattrs))
+	if (unlikely(n != 1u + {{ rpc.out_parameters | length }}))
 		return -ENODATA;
 
 	return 0;
@@ -418,7 +418,7 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
 	zrpc_tlvb_skip(&tlvb, msghdr->len);
 	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
-	if (unlikely(n != nattrs))
+	if (unlikely(n != 1u + {{ rpc.out_parameters | length }}))
 		return -ENODATA;
 
 	return 0;
@@ -531,7 +531,7 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
 	zrpc_tlvb_skip(&tlvb, msghdr->len);
 	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
-	if (unlikely(n != nattrs))
+	if (unlikely(n != {{ rpc.in_parameters | length }}))
 		return -ENODATA;
 
 	return 0;
@@ -707,7 +707,7 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	zrpc_tlvb_init(&tlvb, msghdr->len, msghdr->attrs);
 	zrpc_tlvb_skip(&tlvb, msghdr->len);
 	n = zrpc_tlvb_map(&tlvb, attrs, nattrs);
-	if (unlikely(n != nattrs))
+	if (unlikely(n != {{ rpc.in_parameters | length }}))
 		return -ENODATA;
 
 	return 0;
