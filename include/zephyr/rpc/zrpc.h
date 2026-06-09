@@ -119,7 +119,7 @@ static_assert(alignof(struct zrpc_attr) == alignof(uint32_t),
 
 
 /** zRPC subsystem API */
-__subsystem struct zrpc_api {
+__subsystem struct zrpc_driver_api {
 	/**
 	 * @brief Send message header, including optional trailing attributes.
 	 *
@@ -153,7 +153,7 @@ __syscall int zrpc_send(struct device const *dev,
 static inline int z_impl_zrpc_send(struct device const *dev,
 			struct zrpc_msghdr const *msghdr)
 {
-	struct zrpc_api const *api = dev->api;
+	struct zrpc_driver_api const *api = dev->api;
 
 	if (unlikely(!api->send))
 		return -ENOSYS;
@@ -184,7 +184,7 @@ __syscall int zrpc_recv(struct device const *dev, uint16_t seq,
 static inline int z_impl_zrpc_recv(struct device const *dev, uint16_t seq,
 		struct zrpc_msghdr *msghdr, size_t msg_size)
 {
-	struct zrpc_api const *api = dev->api;
+	struct zrpc_driver_api const *api = dev->api;
 
 	if (unlikely(!api->recv))
 		return -ENOSYS;

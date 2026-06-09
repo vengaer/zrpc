@@ -445,7 +445,7 @@ static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
 }
 
 
-struct zrpc_api const zrpc_virtio_api = {
+struct zrpc_driver_api const zrpc_virtio_api = {
 	.send = zrpc_virtio_send,
 	.recv = zrpc_virtio_recv,
 };
