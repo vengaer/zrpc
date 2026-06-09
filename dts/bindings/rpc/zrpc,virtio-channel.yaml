@@ -20,6 +20,12 @@ properties:
     description: |
       Address and size of the shared memory area to use.
 
+  zrpc,virtio-rx-stack-size:
+    type: int
+    default: 512
+    description: |
+      Size of the stack of the per-backend RX thread.
+
   zrpc,virtio-ipm-stack-size:
     type: int
     default: 512

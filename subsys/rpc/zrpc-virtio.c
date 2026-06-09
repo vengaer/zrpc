@@ -138,6 +138,8 @@ struct zrpc_virtio_data {
 	sys_slist_t pending_replies;
 	/** Work executed on RPC reception */
 	struct k_work rx_work;
+	/** RX work queue */
+	struct k_work_q rx_work_q;
 	/** Queue for received messages */
 	struct k_msgq *rx_queue;
 	/** Queue for replies extracted from @c rx_queue */
@@ -146,6 +148,8 @@ struct zrpc_virtio_data {
 	struct k_mem_slab *wait_slab;
 	/** Address of stack used by IPM thread */
 	k_thread_stack_t *ipm_stack;
+	/** Address of stack used by RX thread */
+	k_thread_stack_t *rx_stack;
 	/** Virtio queues */
 	struct virtqueue *vqueues[2u];
 	/** Owning device */
@@ -169,8 +173,12 @@ struct zrpc_virtio_config {
 	uint32_t channel_id;
 	/** Size of the @c ipm_stack in the corresponding data struct */
 	size_t ipm_stack_size;
+	/** Size of the @c rx_stack in the corresponding data struct */
+	size_t rx_stack_size;
 	/** Name of the IPM work thread */
 	char const *ipm_thread_name;
+	/** Name of the RX work thread */
+	char const *rx_thread_name;
 	/** Inter-process mailbox device */
 	struct device const *ipm_dev;
 };
@@ -563,7 +571,7 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 		msghdr->id, msghdr->seq);
 	ret = k_msgq_put(data->rx_queue, &msghdr, K_NO_WAIT);
 	if (!ret)
-		ret = k_work_submit(&data->rx_work);
+		ret = k_work_submit_to_queue(&data->rx_work_q, &data->rx_work);
 	if (ret < 0)
 		VDEV_ERR(&data->vdev,
 			"Could not queue up processing of incoming RPC: %d",
@@ -963,10 +971,18 @@ static int zrpc_virtio_init_shm(struct device const *dev)
 static int zrpc_virtio_init(struct device const *dev)
 {
 	int ret;
+	struct k_work_q *rx_work_q;
 	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
 
 	data->dev = dev;
+
+	rx_work_q = &data->rx_work_q;
+	k_work_queue_start(rx_work_q, data->rx_stack, cfg->rx_stack_size,
+		K_HIGHEST_THREAD_PRIO, NULL);
+	k_thread_name_set(&rx_work_q->thread, cfg->rx_thread_name);
 	k_work_init(&data->rx_work, zrpc_virtio_rp_ept_work);
+
 	sys_slist_init(&data->pending_replies);
 	k_mutex_init(&data->pending_mutex);
 
@@ -990,6 +1006,11 @@ static int zrpc_virtio_init(struct device const *dev)
 	K_THREAD_STACK_DEFINE(						\
 		zrpc_virtio_ipm_stack_ ## n,				\
 		DT_INST_PROP(n, zrpc_virtio_ipm_stack_size)		\
+	);								\
+									\
+	K_THREAD_STACK_DEFINE(						\
+		zrpc_virtio_rx_stack_ ## n,				\
+		DT_INST_PROP(n, zrpc_virtio_rx_stack_size)		\
 	);								\
 									\
 	K_MSGQ_DEFINE(							\
@@ -1016,6 +1037,7 @@ static int zrpc_virtio_init(struct device const *dev)
 									\
 	static struct zrpc_virtio_data zrpc_virtio_data_ ## n = {	\
 		.ipm_stack = zrpc_virtio_ipm_stack_ ## n,		\
+		.rx_stack= zrpc_virtio_rx_stack_ ## n,			\
 		.rx_queue = &zrpc_virtio_rx_queue_ ## n,		\
 		.reply_queue = &zrpc_virtio_reply_queue_ ## n,		\
 		.wait_slab = &zrpc_virtio_wait_slab_ ## n,		\
@@ -1043,7 +1065,11 @@ static int zrpc_virtio_init(struct device const *dev)
 		.ipm_stack_size = K_THREAD_STACK_SIZEOF(		\
 			zrpc_virtio_ipm_stack_ ## n			\
 		),							\
-		.ipm_thread_name = "zRPC virtio IPM thread " #n,	\
+		.rx_stack_size = K_THREAD_STACK_SIZEOF(			\
+			zrpc_virtio_rx_stack_ ## n			\
+		),							\
+		.ipm_thread_name = "zRPC virtio IPM " #n,		\
+		.rx_thread_name = "zRPC virtio RX " #n,			\
 		.ipm_dev = DEVICE_DT_GET(				\
 			DT_INST_PHANDLE(n, zrpc_virtio_ipm_handle)	\
 		),							\
