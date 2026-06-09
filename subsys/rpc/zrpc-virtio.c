@@ -163,8 +163,7 @@ static inline struct zrpc_virtio_ctrl_blk *zrpc_virtio_ctrl_blk(
 static inline uint_fast8_t zrpc_virtio_vqueue_id(struct device const *dev)
 {
 	struct zrpc_virtio_config const *cfg = dev->config;
-
-	return cfg->host;
+	return !cfg->host;
 }
 
 
@@ -774,8 +773,8 @@ static int zrpc_virtio_init_vdev(struct device const *dev)
 	struct virtio_device *vdev;
 	struct zrpc_virtio_data *data = dev->data;
 	unsigned int const roles[] = {
-		[0] = RPMSG_REMOTE,
-		[1] = RPMSG_HOST,
+		[0] = RPMSG_HOST,
+		[1] = RPMSG_REMOTE,
 	};
 
 
