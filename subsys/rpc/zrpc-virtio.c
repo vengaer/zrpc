@@ -49,6 +49,29 @@ LOG_MODULE_REGISTER(zrpc_virtio, CONFIG_ZRPC_VIRTIO_LOG_LEVEL);
 /** compatible = zrpc,virtio-channel */
 #define DT_DRV_COMPAT zrpc_virtio_channel
 
+/** @cond ZEPHYR_INTERNALS */
+#define VDEV_LOG(lvl, vdev, fmt, ...)					\
+	do {								\
+		_Generic((vdev),					\
+			struct virtio_device *: (void)0,		\
+			struct virtio_device const *: (void)0		\
+		);							\
+									\
+		LOG_ ## lvl("(%s) " fmt,				\
+			(vdev)->role == RPMSG_HOST ?			\
+				"host" : "remote" 			\
+			__VA_OPT__(,)					\
+			__VA_ARGS__					\
+		);							\
+	} while (0);
+
+#define VDEV_DBG(...) VDEV_LOG(DBG, __VA_ARGS__)
+#define VDEV_INF(...) VDEV_LOG(INF, __VA_ARGS__)
+#define VDEV_WRN(...) VDEV_LOG(WRN, __VA_ARGS__)
+#define VDEV_ERR(...) VDEV_LOG(ERR, __VA_ARGS__)
+
+/** @endcond */
+
 /** Control block */
 struct zrpc_virtio_ctrl_blk {
 	/** Status byte */
@@ -287,7 +310,7 @@ static void zrpc_virtio_notify(struct virtqueue *vqueue)
 #endif
 
 	if (ret)
-		LOG_ERR("Error on ipm_send: %d", -ret);
+		VDEV_ERR(&data->vdev, "Error on ipm_send: %d", -ret);
 }
 
 
@@ -388,7 +411,7 @@ static int zrpc_virtio_send(struct device const *dev,
 	struct zrpc_virtio_data *data = dev->data;
 
 	if (unlikely(!data->ept_bound)) {
-		LOG_ERR("Endpoint not yet bound");
+		VDEV_ERR(&data->vdev, "Endpoint not yet bound");
 		return -EAGAIN;
 	}
 
@@ -424,7 +447,7 @@ static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
 	struct zrpc_virtio_data *data = dev->data;
 
 	if (unlikely(!data->ept_bound)) {
-		LOG_ERR("Endpoint not yet bound");
+		VDEV_ERR(&data->vdev, "Endpoint not yet bound");
 		return -EAGAIN;
 	}
 
@@ -493,12 +516,12 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 		CONTAINER_OF(ept, struct zrpc_virtio_data, ept);
 
 	if (unlikely(len < sizeof(*msghdr))) {
-		LOG_WRN("Discarding message of size %zu", len);
+		VDEV_WRN(&data->vdev, "Discarding message of size %zu", len);
 		return RPMSG_SUCCESS;
 	}
 
 	if (unlikely(msghdr->len + sizeof(*msghdr) != len)) {
-		LOG_WRN("Discarding malformed message, "
+		VDEV_WRN(&data->vdev, "Discarding malformed message, "
 			"header indictes length %zu, got %u",
 			(size_t)(msghdr->len + sizeof(*msghdr)),
 			(unsigned int)len);
@@ -510,7 +533,8 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 	if (!ret)
 		ret = k_work_submit(&data->rx_work);
 	if (ret)
-		LOG_ERR("Could not queue up processing of incoming RPC: %d",
+		VDEV_ERR(&data->vdev,
+			"Could not queue up processing of incoming RPC: %d",
 			-ret);
 
 	return RPMSG_SUCCESS;
@@ -542,7 +566,7 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 
 	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(5000));
 	if (ret) {
-		LOG_ERR("Could not lock pending mutex: %d", -ret);
+		VDEV_ERR(&data->vdev, "Could not lock pending mutex: %d", -ret);
 		return ret;
 	}
 
@@ -591,7 +615,8 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 
 	ret = k_msgq_get(data->rx_queue, &msghdr, K_NO_WAIT);
 	if (ret) {
-		LOG_ERR("Error extracting message from RX queue: %d", -ret);
+		VDEV_ERR(&data->vdev,
+			"Error extracting message from RX queue: %d", -ret);
 		return;
 	}
 
@@ -600,7 +625,7 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 	else
 		ret = zrpc_rx_dispatch(cfg->channel_id, msghdr);
 	if (ret)
-		LOG_ERR("Error processing RPC: %d", -ret);
+		VDEV_ERR(&data->vdev, "Error processing RPC: %d", -ret);
 }
 
 /**
@@ -630,7 +655,8 @@ static void zrpc_virtio_bind_cb(struct rpmsg_device *rdev, char const *name,
 	if (!ret)
 		data->ept_bound = true;
 	else
-		LOG_ERR("Error creating endpoint %s: %d", name, ret);
+		VDEV_ERR(&data->vdev, "Error creating endpoint %s: %d", name,
+								ret);
 }
 
 
