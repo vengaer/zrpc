@@ -426,6 +426,7 @@ static int zrpc_virtio_send(struct device const *dev,
 		struct zrpc_msghdr const *msghdr)
 {
 	int ret;
+	size_t len;
 	struct zrpc_virtio_data *data = dev->data;
 
 	if (unlikely(!data->ept_bound)) {
@@ -437,10 +438,10 @@ static int zrpc_virtio_send(struct device const *dev,
 	if (sizeof(*msghdr) + msghdr->len > (size_t)INT_MAX)
 		return -EOVERFLOW;
 #endif
-	VDEV_HEXDUMP_DBG(&data->vdev, msghdr,
-		sizeof(*msghdr) + msghdr->len, "TX: ");
+	len = sizeof(*msghdr) + msghdr->len;
 
-	ret = rpmsg_send(&data->ept, msghdr, msghdr->len);
+	VDEV_HEXDUMP_DBG(&data->vdev, msghdr, len, "TX: ");
+	ret = rpmsg_send(&data->ept, msghdr, len);
 	if (ret < 0)
 		return -EIO;
 
