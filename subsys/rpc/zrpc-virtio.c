@@ -70,6 +70,24 @@ LOG_MODULE_REGISTER(zrpc_virtio, CONFIG_ZRPC_VIRTIO_LOG_LEVEL);
 #define VDEV_WRN(...) VDEV_LOG(WRN, __VA_ARGS__)
 #define VDEV_ERR(...) VDEV_LOG(ERR, __VA_ARGS__)
 
+#define VDEV_HEXDUMP(lvl, vdev, data, length, prefix)			\
+	do {								\
+		_Generic((vdev),					\
+			struct virtio_device *: (void)0,		\
+			struct virtio_device const *: (void)0		\
+		);							\
+									\
+		LOG_HEXDUMP_ ## lvl(data, length,			\
+			(vdev)->role == RPMSG_HOST ?			\
+				"(host) " prefix : "(remote) " prefix	\
+		);							\
+	} while (0);
+
+#define VDEV_HEXDUMP_DBG(...) VDEV_HEXDUMP(DBG, __VA_ARGS__)
+#define VDEV_HEXDUMP_INF(...) VDEV_HEXDUMP(INF, __VA_ARGS__)
+#define VDEV_HEXDUMP_WRN(...) VDEV_HEXDUMP(WRN, __VA_ARGS__)
+#define VDEV_HEXDUMP_ERR(...) VDEV_HEXDUMP(ERR, __VA_ARGS__)
+
 /** @endcond */
 
 /** Control block */
@@ -419,6 +437,8 @@ static int zrpc_virtio_send(struct device const *dev,
 	if (sizeof(*msghdr) + msghdr->len > (size_t)INT_MAX)
 		return -EOVERFLOW;
 #endif
+	VDEV_HEXDUMP_DBG(&data->vdev, msghdr,
+		sizeof(*msghdr) + msghdr->len, "TX: ");
 
 	ret = rpmsg_send(&data->ept, msghdr, msghdr->len);
 	if (ret < 0)
@@ -520,10 +540,13 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 	struct zrpc_virtio_data *data =
 		CONTAINER_OF(ept, struct zrpc_virtio_data, ept);
 
+	VDEV_DBG(&data->vdev, "Received blob of size %zu", len);
 	if (unlikely(len < sizeof(*msghdr))) {
 		VDEV_WRN(&data->vdev, "Discarding message of size %zu", len);
 		return RPMSG_SUCCESS;
 	}
+
+	VDEV_HEXDUMP_DBG(&data->vdev, msghdr, len, "RX: ");
 
 	if (unlikely(msghdr->len + sizeof(*msghdr) != len)) {
 		VDEV_WRN(&data->vdev, "Discarding malformed message, "
@@ -534,6 +557,9 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 		return RPMSG_SUCCESS;
 	}
 
+	VDEV_DBG(&data->vdev,
+		"Queueing up message with id 0x%04" PRIx16 ", seq 0x%04" PRIx16,
+		msghdr->id, msghdr->seq);
 	ret = k_msgq_put(data->rx_queue, &msghdr, K_NO_WAIT);
 	if (!ret)
 		ret = k_work_submit(&data->rx_work);
