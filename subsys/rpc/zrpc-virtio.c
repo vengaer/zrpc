@@ -415,6 +415,11 @@ static int zrpc_virtio_send(struct device const *dev,
 		return -EAGAIN;
 	}
 
+#ifdef CONFIG_ZRPC_PEDANTIC
+	if (sizeof(*msghdr) + msghdr->len > (size_t)INT_MAX)
+		return -EOVERFLOW;
+#endif
+
 	ret = rpmsg_send(&data->ept, msghdr, msghdr->len);
 	if (ret < 0)
 		return -EIO;
