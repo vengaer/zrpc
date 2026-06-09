@@ -534,7 +534,7 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 		return RPMSG_SUCCESS;
 	}
 
-	ret = k_msgq_put(data->rx_queue, msghdr, K_NO_WAIT);
+	ret = k_msgq_put(data->rx_queue, &msghdr, K_NO_WAIT);
 	if (!ret)
 		ret = k_work_submit(&data->rx_work);
 	if (ret)
