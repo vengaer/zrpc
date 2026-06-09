@@ -731,9 +731,12 @@ static void zrpc_virtio_ipm_work(struct k_work *work)
 static void zrpc_virtio_ipm_cb(struct device const *ipm_dev, void *user_data,
 		uint32_t id, void volatile *ipmdata)
 {
+	int ret;
 	struct zrpc_virtio_data *data = user_data;
 
-	k_work_submit_to_queue(&data->ipm_work_q, &data->ipm_work);
+	ret = k_work_submit_to_queue(&data->ipm_work_q, &data->ipm_work);
+	if (ret < 0)
+		VDEV_ERR(&data->vdev, "Could not submit IPM work: %d", -ret);
 }
 
 
