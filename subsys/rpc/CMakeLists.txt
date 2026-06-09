@@ -33,7 +33,8 @@ execute_process(
 )
 
 if (ret AND NOT ret EQUAL 0)
-    message(FATAL_ERROR "zRPC generation failed")
+    message(WARNING "zRPC generation failed")
+else ()
+    include("${zrpc_lib_gen}")
 endif()
 
-include("${zrpc_lib_gen}")
