@@ -71,6 +71,8 @@ struct zrpc_virtio_wait_node {
 
 /** Instance-specific data */
 struct zrpc_virtio_data {
+	/** Whether or not the endpoint is bound */
+	bool ept_bound;
 	/** Work scheduled on IPM callbacks */
 	struct k_work ipm_work;
 	/** IPM work queue */
@@ -385,6 +387,11 @@ static int zrpc_virtio_send(struct device const *dev,
 	int ret;
 	struct zrpc_virtio_data *data = dev->data;
 
+	if (unlikely(!data->ept_bound)) {
+		LOG_ERR("Endpoint not yet bound");
+		return -EAGAIN;
+	}
+
 	ret = rpmsg_send(&data->ept, msghdr, msghdr->len);
 	if (ret < 0)
 		return -EIO;
@@ -415,6 +422,11 @@ static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
 	void *mem;
 	struct zrpc_virtio_wait_node *node;
 	struct zrpc_virtio_data *data = dev->data;
+
+	if (unlikely(!data->ept_bound)) {
+		LOG_ERR("Endpoint not yet bound");
+		return -EAGAIN;
+	}
 
 	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(3000));
 	if (ret)
@@ -615,7 +627,9 @@ static void zrpc_virtio_bind_cb(struct rpmsg_device *rdev, char const *name,
 	ret = rpmsg_create_ept(&data->ept, rdev, name, RPMSG_ADDR_ANY, dst,
 		zrpc_virtio_rp_ept_cb, zrpc_virtio_rp_unbind_cb);
 
-	if (ret)
+	if (!ret)
+		data->ept_bound = true;
+	else
 		LOG_ERR("Error creating endpoint %s: %d", name, ret);
 }
 
@@ -870,7 +884,9 @@ static int zrpc_virtio_init_shm(struct device const *dev)
 		ret = rpmsg_create_ept(&data->ept, rdev, dev->name,
 			RPMSG_ADDR_ANY, RPMSG_ADDR_ANY, zrpc_virtio_rp_ept_cb,
 			zrpc_virtio_rp_unbind_cb);
-		if (ret)
+		if (!ret)
+			data->ept_bound = true;
+		else
 			return -EFAULT;
 	}
 
