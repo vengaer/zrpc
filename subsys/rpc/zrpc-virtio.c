@@ -480,6 +480,11 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 	struct zrpc_virtio_data *data =
 		CONTAINER_OF(ept, struct zrpc_virtio_data, ept);
 
+	if (unlikely(len < sizeof(*msghdr))) {
+		LOG_WRN("Discarding message of size %zu", len);
+		return RPMSG_SUCCESS;
+	}
+
 	if (unlikely(msghdr->len + sizeof(*msghdr) != len)) {
 		LOG_WRN("Discarding malformed message, "
 			"header indictes length %zu, got %u",
