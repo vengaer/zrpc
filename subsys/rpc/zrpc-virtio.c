@@ -509,6 +509,10 @@ static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
 	}
 	k_mutex_unlock(&data->pending_mutex);
 
+	if (!ret)
+		VDEV_HEXDUMP_DBG(&data->vdev, msghdr,
+			sizeof(*msghdr) + msghdr->len, "Extracted:");
+
 	return ret;
 
 }
