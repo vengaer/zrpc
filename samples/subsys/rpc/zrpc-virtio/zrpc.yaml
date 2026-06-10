@@ -22,5 +22,20 @@ channels:
         description: |
           Send a heartbeat RPC to the peer.
         origin: [ host, remote ]
+      - name: forward_rtp_pkt
+        parameters:
+          - name: rtp_pkt
+            type: uint8_t const *
+            size: &rtp-pkt-size rtp_pkt_size
+            description: The RTP packet to forward
+            direction: in
+          - name: *rtp-pkt-size
+            type: uint32_t
+            description: Size of the packet at @p rtp_pkt.
+        brief: Forward RTP packet over RPC.
+        description: |
+          Forward complete RTP packet over RPC.
+        origin: [ remote ]
+        want_reply: False
     description:
       VirtIO-backed shared memory channel.

@@ -224,6 +224,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 	return ret;
 }
 
+{% if rpc.want_reply %}
 
 /**
  * @brief Decode {{ rpc.name }} RPC response.
@@ -253,6 +254,8 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	return 0;
 }
 
+{% endif %}
+
 int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
 	int ret;
@@ -271,10 +274,14 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	{% endfor %}
 	;
 	uint32_t const out_required =
+	{% if rpc.want_reply %}
 		sizeof(struct zrpc_msghdr)
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
-	{% endfor %}
+		{% endfor %}
+	{% else %}
+		0u
+	{% endif %}
 	;
 	uint32_t const required = MAX(in_required, out_required);
 
@@ -297,6 +304,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 
 	if (likely(!ret))
 		ret = zrpc_send({{ channel.name }}_dev, msghdr);
+	{% if rpc.want_reply %}
 	if (likely(!ret))
 		ret = zrpc_recv({{ channel.name}}_dev, msghdr->seq, msghdr, required);
 	if (likely(!ret))
@@ -307,26 +315,30 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
 		ret = -ENOBUFS;
-	{% endfor %}
+		{% endfor %}
 #endif
 	if (!ret) {
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
 
-	{% endfor %}
+		{% endfor %}
 		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	}
+	{% endif %}
 
 	zrpc_{{ channel.name | lower }}_heap_free(msghdr);
-	return ret ? ret : (int)zrpc_attr_get_u32(attr);
+	{% if rpc.want_reply %}
+	ret = ret ? ret : (int)zrpc_attr_get_u32(attr);
+	{% endif %}
+	return ret;
 }
 {% endfor %}
 
@@ -397,6 +409,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 	return ret;
 }
 
+{% if rpc.want_reply %}
 
 /**
  * @brief Decode {{ rpc.name }} RPC response.
@@ -426,6 +439,8 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	return 0;
 }
 
+{% endif %}
+
 int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
 	int ret;
@@ -444,10 +459,14 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	{% endfor %}
 	;
 	uint32_t const out_required =
+	{% if rpc.want_reply %}
 		sizeof(struct zrpc_msghdr)
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
-	{% endfor %}
+		{% endfor %}
+	{% else %}
+		0u
+	{% endif %}
 	;
 	uint32_t const required = MAX(in_required, out_required);
 
@@ -470,6 +489,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 
 	if (likely(!ret))
 		ret = zrpc_send({{ channel.name }}_dev, msghdr);
+	{% if rpc.want_reply %}
 	if (likely(!ret))
 		ret = zrpc_recv({{ channel.name}}_dev, msghdr->seq, msghdr, required);
 	if (likely(!ret))
@@ -480,26 +500,30 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
 		ret = -ENOBUFS;
-	{% endfor %}
+		{% endfor %}
 #endif
 	if (!ret) {
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
 
-	{% endfor %}
+		{% endfor %}
 		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	}
+	{% endif %}
 
 	zrpc_{{ channel.name | lower }}_heap_free(msghdr);
-	return ret ? ret : (int)zrpc_attr_get_u32(attr);
+	{% if rpc.want_reply %}
+	ret = ret ? ret : (int)zrpc_attr_get_u32(attr);
+	{% endif %}
+	return ret;
 }
 {% endfor %}
 
@@ -539,26 +563,27 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 	return 0;
 }
 
+{% if rpc.want_reply %}
 
 /**
  * @brief Encode RPC response.
  *
  * @param[in] ret RPC return code.
-{% for param in rpc.out_parameters %}
+	{% for param in rpc.out_parameters %}
  * @param[in] {{ param.name | lower }} RPC out parameter {{ param.name }}
-{% endfor %}
+	{% endfor %}
  *
  * @retval 0      Message successfully populated.
  * @retval -errno Message population failed.
  */
-{% if rpc.out_parameters | length %}
+	{% if rpc.out_parameters | length %}
 static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
 		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc,
 		{{ rpc.out_parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="c_decl") | join(", ") }})
-{% else %}
+	{% else %}
 static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
 		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc)
-{% endif %}
+	{% endif %}
 {
 	int ret = 0;
 	zrpc_tag tag;
@@ -593,6 +618,8 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 	return ret;
 }
 
+
+{% endif %}
 
 
 /**
@@ -664,15 +691,17 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	}
 	if (!ret)
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	{% if rpc.want_reply %}
 	if (ret >= 0)
-	{% if rpc.out_parameters | length %}
+		{% if rpc.out_parameters | length %}
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret,
 				{{rpc.out_parameters | map(attribute="name") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="name") | join(", ") }});
-	{% else %}
+		{% else %}
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret);
-	{% endif %}
+		{% endif %}
 	if (!ret)
 		ret = zrpc_send({{ channel.name }}_dev, rsphdr);
+	{% endif %}
 
 	if (rsphdr)
 		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);
@@ -722,25 +751,27 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 }
 
 
+{% if rpc.want_reply %}
+
 /**
  * @brief Encode RPC response.
  *
  * @param[in] ret RPC return code.
-{% for param in rpc.out_parameters %}
+	{% for param in rpc.out_parameters %}
  * @param[in] {{ param.name | lower }} RPC out parameter {{ param.name }}
-{% endfor %}
+	{% endfor %}
  *
  * @retval 0      Message successfully populated.
  * @retval -errno Message population failed.
  */
-{% if rpc.out_parameters | length %}
+	{% if rpc.out_parameters | length %}
 static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
 		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc,
 		{{ rpc.out_parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="c_decl") | join(", ") }})
-{% else %}
+	{% else %}
 static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(struct zrpc_msghdr const *reqhdr,
 		struct zrpc_msghdr *rsphdr, size_t rspsz, int rc)
-{% endif %}
+	{% endif %}
 {
 	int ret = 0;
 	zrpc_tag tag;
@@ -775,6 +806,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 	return ret;
 }
 
+{% endif %}
 
 
 /**
@@ -846,15 +878,17 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	}
 	if (!ret)
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	{% if rpc.want_reply %}
 	if (ret >= 0)
-	{% if rpc.out_parameters | length %}
+		{% if rpc.out_parameters | length %}
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret,
 				{{rpc.out_parameters | map(attribute="name") | join(", ") }}{% if rpc.size_parameters | length %}, {% endif %}{{ rpc.size_parameters | map(attribute="name") | join(", ") }});
-	{% else %}
+		{% else %}
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_encode_reply(msghdr, rsphdr, rspsize, ret);
-	{% endif %}
+		{% endif %}
 	if (!ret)
 		ret = zrpc_send({{ channel.name }}_dev, rsphdr);
+	{% endif %}
 
 	if (rsphdr)
 		zrpc_{{ channel.name | lower }}_heap_free(rsphdr);

@@ -7,8 +7,11 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <zephyr/logging/log.h>
 #include <zephyr/random/random.h>
 #include <zephyr/rpc/zrpc-channel-virtio.h>
+
+LOG_MODULE_REGISTER(virtio_sample, CONFIG_ZRPC_VIRTIO_LOG_LEVEL);
 
 /* Invoked when the get_uid RPC is received from the peer */
 int zrpc_virtio_get_uid_serve(uint8_t *uid, uint32_t size)
@@ -20,6 +23,14 @@ int zrpc_virtio_get_uid_serve(uint8_t *uid, uint32_t size)
 
 	printf("Sending UID 0x%x\n", (unsigned int)r);
 	memcpy(uid, &r, sizeof(r));
+	return 0;
+}
+
+
+int zrpc_virtio_forward_rtp_pkt_serve(uint8_t const *rtp_pkt,
+		uint32_t rtp_pkt_size)
+{
+	LOG_HEXDUMP_INF(rtp_pkt, rtp_pkt_size, "RTP packet:");
 	return 0;
 }
 

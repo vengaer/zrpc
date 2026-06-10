@@ -341,6 +341,7 @@ class Rpc:
     parameters: List[Parameter]
     rpc_id: int
     crc: str
+    want_reply: bool
 
     def __post_init__(self) -> None:
         if (match := re.match("^(0x)?[0-9a-fA-F]{1,2}$", self.crc)) is None:
@@ -362,6 +363,8 @@ class Rpc:
     @property
     def out_parameters(self) -> List[Parameter]:
         """Get list of (non-void) out-parameters"""
+        if not self.want_reply:
+            return []
         return [p for p in self.parameters if p.is_out_parameter]
 
     @property
@@ -448,6 +451,7 @@ class Rpc:
             parameters=parameters,
             rpc_id=index,
             crc=crc.hexdigest(),
+            want_reply=yml.get("want_reply", True),
         )
 
 
