@@ -203,7 +203,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 	zrpc_tlvb_init(&tlvb, msgsz - sizeof(*msghdr), msghdr->attrs);
 	{% for param in rpc.in_parameters %}
 
-	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
 			{% if param.typedecl.is_str %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
@@ -267,9 +267,9 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	int ret;
 	struct zrpc_attr *attr;
 	struct zrpc_attr *attrs[] = {
-		[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
 	{% for param in rpc.out_parameters %}
-		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
 	{% endfor %}
 	};
 	struct zrpc_msghdr *msghdr;
@@ -318,12 +318,12 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 				ARRAY_SIZE(attrs));
 
 #ifdef CONFIG_ZRPC_PEDANTIC
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 		{% for param in rpc.out_parameters %}
 
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
@@ -332,11 +332,11 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 #endif
 	if (!ret) {
 		{% for param in rpc.out_parameters %}
-		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+		attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
 
 		{% endfor %}
-		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+		attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	}
 	{% endif %}
 
@@ -388,7 +388,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 	zrpc_tlvb_init(&tlvb, msgsz - sizeof(*msghdr), msghdr->attrs);
 	{% for param in rpc.in_parameters %}
 
-	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
 			{% if param.typedecl.is_str %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
@@ -452,9 +452,9 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	int ret;
 	struct zrpc_attr *attr;
 	struct zrpc_attr *attrs[] = {
-		[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
 	{% for param in rpc.out_parameters %}
-		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
 	{% endfor %}
 	};
 	struct zrpc_msghdr *msghdr;
@@ -503,12 +503,12 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 				ARRAY_SIZE(attrs));
 
 #ifdef CONFIG_ZRPC_PEDANTIC
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 		{% for param in rpc.out_parameters %}
 
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 	if (unlikely(!ret && !attr))
 		ret = -ENODATA;
 	if (unlikely(!ret && zrpc_attr_len(attr) > {{ param.size }}))
@@ -517,11 +517,11 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 #endif
 	if (!ret) {
 		{% for param in rpc.out_parameters %}
-		attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
+		attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }}];
 		memcpy({{ param.name }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
 
 		{% endfor %}
-		attr = attrs[ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET];
+		attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET];
 	}
 	{% endif %}
 
@@ -650,11 +650,11 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 
 	zrpc_tlvb_init(&tlvb, rspsz - sizeof(*rsphdr), rsphdr->attrs);
 
-	tag = ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET;
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET;
 	ret = zrpc_tlvb_put_u32(&tlvb, tag, (uint32_t)rc);
 	{% for param in rpc.out_parameters %}
 
-	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
 			{% if param.typedecl.is_str %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
@@ -702,7 +702,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 		{% endfor %}
 	struct zrpc_attr *attrs[] = {
 		{% for param in rpc.in_parameters %}
-		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
 		{% endfor %}
 	};
 	{% endif %}
@@ -720,7 +720,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% endif %}
 	{% for param in rpc.in_parameters %}
 
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
 		{% if param.typedecl.is_ptr %}
 	static_assert(alignof({{ param.typedecl.c_decl_unqual }}) <= zrpc_alignto,
 		"Alignment of {{ param.name | lower }} parameter to {{ rpc.name | lower }} is insufficient");
@@ -921,11 +921,11 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 
 	zrpc_tlvb_init(&tlvb, rspsz - sizeof(*rsphdr), rsphdr->attrs);
 
-	tag = ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET;
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET;
 	ret = zrpc_tlvb_put_u32(&tlvb, tag, (uint32_t)rc);
 	{% for param in rpc.out_parameters %}
 
-	tag = ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
+	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
 			{% if param.typedecl.is_str %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
@@ -972,7 +972,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 		{% endfor %}
 	struct zrpc_attr *attrs[] = {
 		{% for param in rpc.in_parameters %}
-		[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
+		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
 		{% endfor %}
 	};
 	{% endif %}
@@ -990,7 +990,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% endif %}
 	{% for param in rpc.in_parameters %}
 
-	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
 		{% if param.typedecl.is_ptr %}
 	static_assert(alignof(param.typedecl.c_decl_unqual) <= zrpc_alignto,
 		"Alignment of {{ param.name | lower }} parameter to {{ rpc.name | lower }} is insufficient");

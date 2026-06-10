@@ -93,26 +93,28 @@ enum zrpc_{{ channel.name | lower }}_rpc_id {
 /** RPC {{ rpc.name }} parameter identifiers */
 enum {
 	/** Return code */
-	ZRPC_{{ rpc.name | upper }}_FIX_PARAM_RET,
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET,
 	{# Place out-parameters first to keep out arrays as small as possible #}
 	{% for param in rpc.out_parameters %}
 	/** RPC parameter {{ param.name }} */
-	ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
 	{% endfor %}
 	{% for param in rpc.in_parameters %}
 		{# Parameters may be both in and out #}
 		{% if not param.is_out_parameter %}
 	/** RPC parameter {{ param.name }} */
-	ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }},
 		{% endif %}
 	{% endfor %}
 	/** Marker, unused */
-	ZRPC_{{ rpc.name | upper }}_PARAM_AFTER_LAST_,
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_AFTER_LAST_,
 	/** Maximum parameter identifier */
-	ZRPC_{{ rpc.name | upper }}_MAX = ZRPC_{{ rpc.name | upper }}_PARAM_AFTER_LAST_ - 1,
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_MAX = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_AFTER_LAST_ - 1,
 };
-static_assert(ZRPC_{{ rpc.name | upper }}_MAX <= ZRPC_TAG_MAX,
-	"RPC {{ rpc.name }} names too many parameters");
+static_assert(
+	ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_MAX <= ZRPC_TAG_MAX,
+	"RPC {{ rpc.name }} names too many parameters"
+);
 
 {% endfor %}
 
