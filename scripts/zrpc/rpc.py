@@ -131,6 +131,11 @@ class TypeDecl:
             )
         )
 
+    @property
+    def c_decl_unqual(self) -> str:
+        """Get snippet declaring the type, qualifiers exlucded"""
+        return self.ident.fundamental_type + (" *" if self.is_ptr else " ")
+
     @classmethod
     def from_yaml(cls, typedecl: str) -> TypeDecl:
         """Parse parameter type from expression

@@ -10,6 +10,8 @@
  * @brief zRPC channel {{ channel.name }} implementation.
  */
 
+#include <assert.h>
+#include <stdalign.h>
 #include <string.h>
 
 #include <zephyr/device.h>
@@ -633,7 +635,13 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% for param in rpc.in_parameters %}
 
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+		{% if param.typedecl.is_ptr %}
+	static_assert(alignof({{ param.typedecl.c_decl_unqual }}) <= zrpc_alignto,
+		"Alignment of {{ param.name | lower }} parameter to {{ rpc.name | lower }} is insufficient");
+	{{ param.name | lower }} = zrpc_attr_data(attr);
+		{% else %}
 	memcpy(&{{ param.name | lower }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+		{% endif %}
 	{% endfor %}
 	{% for param in rpc.out_parameters %}
 
@@ -809,7 +817,13 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% for param in rpc.in_parameters %}
 
 	attr = attrs[ZRPC_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
+		{% if param.typedecl.is_ptr %}
+	static_assert(alignof(param.typedecl.c_decl_unqual) <= zrpc_alignto,
+		"Alignment of {{ param.name | lower }} parameter to {{ rpc.name | lower }} is insufficient");
+	{{ param.name | lower }} = zrpc_attr_data(attr);
+		{% else %}
 	memcpy(&{{ param.name | lower }}, zrpc_attr_data(attr), zrpc_attr_len(attr));
+		{% endif %}
 	{% endfor %}
 	{% for param in rpc.out_parameters %}
 
