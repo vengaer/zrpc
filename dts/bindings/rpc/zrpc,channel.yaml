@@ -38,7 +38,7 @@ examples:
       virtio_channel_0: memory@38000000 {
         compatible = "zrpc,virtio-channel";
                      "zrpc,channel";
-        zrpc,channel-id = <0>; /* Attach the virito channel from the configuration */
+        zrpc,channel-id = <0>; /* Attach the virtio channel from the configuration */
       };
     };
 
