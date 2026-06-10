@@ -99,12 +99,16 @@ struct zrpc_virtio_ctrl_blk {
 
 /** RX wait node */
 struct zrpc_virtio_wait_node {
+
 	/** List head for iteration */
 	sys_snode_t head;
+
 	/** Sequence number of the expected reply */
 	uint16_t seq;
+
 	/** Condition variable to wait on */
 	struct k_condvar cv;
+
 	/** Message to pass to reader */
 	struct zrpc_msghdr *msghdr;
 };
@@ -112,48 +116,70 @@ struct zrpc_virtio_wait_node {
 
 /** Instance-specific data */
 struct zrpc_virtio_data {
+
 	/** Whether or not the endpoint is bound */
 	bool ept_bound;
+
 	/** Maximum size of RPCs send over this channel */
 	uint32_t max_rpc_size;
+
 	/** Work scheduled on IPM callbacks */
 	struct k_work ipm_work;
+
 	/** IPM work queue */
 	struct k_work_q ipm_work_q;
+
 	/** Shared memory physical address map */
 	metal_phys_addr_t shm_physmap;
+
 	/** Shared memory I/O region */
 	struct metal_io_region shm_io;
+
 	/** Virtio rings */
 	struct virtio_vring_info vrings[2u];
+
 	/** Virtio device */
 	struct virtio_device vdev;
+
 	/** Shared memory buffers pool */
 	struct rpmsg_virtio_shm_pool shmpool;
+
 	/** Rpmsg endpoint */
 	struct rpmsg_endpoint ept;
+
 	/** Rpmsg virtio device */
 	struct rpmsg_virtio_device rvdev;
+
 	/** Mutex protecting @c pending_replies */
 	struct k_mutex pending_mutex;
+
 	/** List of RPCs awaiting replies */
 	sys_slist_t pending_replies;
+
 	/** Work executed on RPC reception */
 	struct k_work rx_work;
+
 	/** RX work queue */
 	struct k_work_q rx_work_q;
+
 	/** Queue for received messages */
 	struct k_msgq *rx_queue;
+
 	/** Queue for replies extracted from @c rx_queue */
 	struct k_msgq *reply_queue;
+
 	/** <tt>struct zrpc_virtio_wait_node</tt> pool */
 	struct k_mem_slab *wait_slab;
+
 	/** Address of stack used by IPM thread */
 	k_thread_stack_t *ipm_stack;
+
 	/** Address of stack used by RX thread */
 	k_thread_stack_t *rx_stack;
+
 	/** Virtio queues */
 	struct virtqueue *vqueues[2u];
+
 	/** Owning device */
 	struct device const *dev;
 };
@@ -161,28 +187,40 @@ struct zrpc_virtio_data {
 
 /** Instance-specific config */
 struct zrpc_virtio_config {
+
 	/** Whether or not the endpoint should run in host mode */
 	bool host;
+
 	/** Base address of the shared memory section */
 	uint32_t shm_addr;
+
 	/** Size of the shared memory section */
 	uint32_t shm_size;
+
 	/** Size of the shared memory control block */
 	uint32_t ctrl_blk_size;
+
 	/** Number of trailing vring extra descriptors */
 	uint32_t num_vq_desc_extra;
+
 	/** ID of the zRPC channel */
 	uint32_t channel_id;
+
 	/** Maximum size of each chunk transmitted in the rings */
 	uint32_t tx_chunk_size;
+
 	/** Size of the @c ipm_stack in the corresponding data struct */
 	size_t ipm_stack_size;
+
 	/** Size of the @c rx_stack in the corresponding data struct */
 	size_t rx_stack_size;
+
 	/** Name of the IPM work thread */
 	char const *ipm_thread_name;
+
 	/** Name of the RX work thread */
 	char const *rx_thread_name;
+
 	/** Inter-process mailbox device */
 	struct device const *ipm_dev;
 };
