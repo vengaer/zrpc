@@ -75,7 +75,7 @@ properties:
       zrpc,virtio-reply-queue-size determines the size of the queue in which replies
       that have yet to be extracted by user code are buffered.
 
-      Must like zrpc,virtio-rx-queue-size, this property need rarely be large.
+      Much like zrpc,virtio-rx-queue-size, this property rarely needs to be large.
 
   zrpc,virtio-max-concurrent-replies:
     type: int
@@ -83,3 +83,11 @@ properties:
     description: |
       Maximum concurrent number of replies in flight. Once the number is exceeded, newly issued RPCs
       fail until at least one of the outstanding RPCs has completed.
+
+  zrpc,virtio-tx-chunk-size:
+    type: int
+    default: 512
+    description: |
+      Size of the memory chunks in which RPCs are transmitted. This setting effectively determines
+      the maximum size of RPCs allowed over the channel. At the time of writing, said maximum
+      is the value of this property - 16.

@@ -114,6 +114,8 @@ struct zrpc_virtio_wait_node {
 struct zrpc_virtio_data {
 	/** Whether or not the endpoint is bound */
 	bool ept_bound;
+	/** Maximum size of RPCs send over this channel */
+	uint32_t max_rpc_size;
 	/** Work scheduled on IPM callbacks */
 	struct k_work ipm_work;
 	/** IPM work queue */
@@ -171,6 +173,8 @@ struct zrpc_virtio_config {
 	uint32_t num_vq_desc_extra;
 	/** ID of the zRPC channel */
 	uint32_t channel_id;
+	/** Maximum size of each chunk transmitted in the rings */
+	uint32_t tx_chunk_size;
 	/** Size of the @c ipm_stack in the corresponding data struct */
 	size_t ipm_stack_size;
 	/** Size of the @c rx_stack in the corresponding data struct */
@@ -447,6 +451,9 @@ static int zrpc_virtio_send(struct device const *dev,
 		return -EOVERFLOW;
 #endif
 	len = sizeof(*msghdr) + msghdr->len;
+
+	if (unlikely(data->max_rpc_size && len > data->max_rpc_size))
+		return -ENOBUFS;
 
 	VDEV_HEXDUMP_DBG(&data->vdev, msghdr, len, "TX: ");
 	ret = rpmsg_send(&data->ept, msghdr, len);
@@ -936,6 +943,11 @@ static int zrpc_virtio_init_shm(struct device const *dev)
 	struct zrpc_virtio_data *data = dev->data;
 	struct rpmsg_virtio_shm_pool *shmpool = NULL;
 	struct zrpc_virtio_config const *cfg = dev->config;
+	struct rpmsg_virtio_config const rpmsg_cfg = {
+		.h2r_buf_size = cfg->tx_chunk_size,
+		.r2h_buf_size = cfg->tx_chunk_size,
+		.split_shpool = false,
+	};
 	void (*bind_cb)(struct rpmsg_device *, char const *, uint32_t) = NULL;
 
 	if (cfg->host) {
@@ -946,25 +958,36 @@ static int zrpc_virtio_init_shm(struct device const *dev)
 		bind_cb = zrpc_virtio_bind_cb;
 	}
 
-	ret = rpmsg_init_vdev(&data->rvdev, &data->vdev, bind_cb, &data->shm_io,
-				shmpool);
+	ret = rpmsg_init_vdev_with_config(&data->rvdev, &data->vdev, bind_cb,
+			&data->shm_io, shmpool, &rpmsg_cfg);
 	if (ret)
 		return -ENODEV;
 
+	rdev = rpmsg_virtio_get_rpmsg_device(&data->rvdev);
+	if (unlikely(!rdev))
+		return -ENODEV;
 	if (!cfg->host) {
-		rdev = rpmsg_virtio_get_rpmsg_device(&data->rvdev);
-		if (unlikely(!rdev))
-			return -ENODEV;
 		ret = rpmsg_create_ept(&data->ept, rdev, dev->name,
 			RPMSG_ADDR_ANY, RPMSG_ADDR_ANY, zrpc_virtio_rp_ept_cb,
 			zrpc_virtio_rp_unbind_cb);
 		if (!ret)
 			data->ept_bound = true;
 		else
-			return -EFAULT;
+			ret = -EFAULT;
+	}
+	if (!ret) {
+		ret = rpmsg_virtio_get_tx_buffer_size(rdev);
+		if (ret > 0)
+			data->max_rpc_size = (uint32_t)ret;
+		else {
+			VDEV_WRN(&data->vdev,
+				"Could not determine max RPC size");
+			data->max_rpc_size = 0u;
+		}
+		ret = 0;
 	}
 
-	return 0;
+	return ret;
 }
 
 
@@ -1070,6 +1093,9 @@ static int zrpc_virtio_init(struct device const *dev)
 			n, zrpc_virtio_virtqueue_num_extra_descs	\
 		),							\
 		.channel_id = DT_INST_PROP(n, zrpc_channel_id),		\
+		.tx_chunk_size = DT_INST_PROP(				\
+			n, zrpc_virtio_tx_chunk_size			\
+		),							\
 		.ipm_stack_size = K_THREAD_STACK_SIZEOF(		\
 			zrpc_virtio_ipm_stack_ ## n			\
 		),							\
