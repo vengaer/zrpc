@@ -503,7 +503,8 @@ static int zrpc_virtio_recv(struct device const *dev, uint16_t seq,
 
 	if (node) {
 		if (!ret)
-			memcpy(msghdr, node->msghdr, node->msghdr->len);
+			memcpy(msghdr, node->msghdr,
+				sizeof(*msghdr) + node->msghdr->len);
 		k_mem_slab_free(data->wait_slab, node);
 	}
 	k_mutex_unlock(&data->pending_mutex);
