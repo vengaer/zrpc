@@ -8,9 +8,6 @@ description: |
 include:
   - name: base.yaml
   - name: zrpc,channel.yaml
-    property-allowlist:
-      - zrpc,channel-id
-      - zrpc,host
 
 compatible: zrpc,virtio-channel
 
