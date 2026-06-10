@@ -77,7 +77,7 @@ struct zrpc_msghdr;
  *
  * @return Value of the zrpc,heap-size attribute for the device node
  */
-#define ZRPC_CHANNEL_HEAP_SIZE(n)						\
+#define ZRPC_CHANNEL_HEAP_SIZE(n, channel_id)					\
 	COND_CODE_1(								\
 		IS_EQ(DT_INST_PROP(n, zrpc_channel_id), channel_id),		\
 		(DT_INST_PROP(n, zrpc_heap_size)),				\

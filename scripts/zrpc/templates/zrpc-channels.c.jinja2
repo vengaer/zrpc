@@ -20,9 +20,11 @@
  * @{
  */
 
+#ifdef CONFIG_ZRPC_HEAP_TYPE_GLOBAL
 K_MUTEX_DEFINE(zrpc_gbl_heap_mutex);
 
 K_HEAP_DEFINE(zrpc_gbl_heap, CONFIG_ZRPC_GLOBAL_HEAP_SIZE);
+#endif
 
 
 int zrpc_rx_dispatch(uint32_t channel_id, struct zrpc_msghdr *msghdr)

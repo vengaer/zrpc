@@ -67,7 +67,7 @@ static K_MUTEX_DEFINE(zrpc_{{ channel.name | lower }}_heap_mutex);
 
 /** {{ channel.name }} heap */
 static K_HEAP_DEFINE(zrpc_{{ channel.name | lower }}_heap,
-		DT_DRV_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_{{ channel.name | upper }}_HEAP_SIZE));
+		DT_INST_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_{{ channel.name | upper }}_HEAP_SIZE));
 
 
 /**
