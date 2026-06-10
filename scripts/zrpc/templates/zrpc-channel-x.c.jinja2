@@ -29,6 +29,11 @@
 /** compatible = "zrpc,channel"; */
 #define DT_DRV_COMPAT zrpc_channel
 
+static_assert(CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT >= 0,
+	"ZRPC_USER_DATA_BUCKET_SHIFT must be >=0");
+static_assert(CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT <= 6,
+	"ZRPC_USER_DATA_BUCKET_SHIFT must be at most 6");
+
 /**
  * @brief Look up {{ channel.name }} RPC channel.
  *
@@ -63,6 +68,7 @@ static K_MUTEX_DEFINE(zrpc_{{ channel.name | lower }}_heap_mutex);
 /** {{ channel.name }} heap */
 static K_HEAP_DEFINE(zrpc_{{ channel.name | lower }}_heap,
 		DT_DRV_FOREACH_STATUS_OKAY(ZRPC_CHANNEL_{{ channel.name | upper }}_HEAP_SIZE));
+
 
 /**
  * @brief Allocate @c n bytes of 4-byte aligned data from the {{ channel.name }} heap.
@@ -532,6 +538,59 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 
 
 #if ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE
+{% if channel.rpcs_to_host | selectattr("want_user_data") | list | length %}
+
+	{% for n in range(64) %}
+#if {{ n }} < (1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT)
+static K_MUTEX_DEFINE(zrpc_{{ channel.name | lower }}_user_data_mutex{{ n }});
+#endif
+
+	{% endfor %}
+
+static struct k_mutex *zrpc_{{ channel.name | lower }}_user_data_locks[] = {
+	{% for n in range(64) %}
+#if {{ n }} < (1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT)
+	[{{ n }}u] = &zrpc_{{channel.name | lower}}_user_data_mutex{{ n }},
+#endif
+
+	{% endfor %}
+};
+
+
+/**
+ * @brief Lock user data bucket corresponding to @p tag.
+ *
+ * @param tag Tag of the RPC whose user data is to be locked.
+ *
+ * @retval 0      Bucket locked.
+ * @retval -errno An error occurred.
+ */
+static inline int zrpc_{{ channel.name | lower }}_user_data_lock(zrpc_tag tag)
+{
+	uint_fast8_t const bucket =
+		tag & ((1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT) - 1u);
+	return k_mutex_lock(zrpc_{{ channel.name | lower }}_user_data_locks[bucket], K_MSEC(5000));
+}
+
+
+/**
+ * @brief Unlock user data bucket corresponding to @p tag.
+ *
+ * @param tag Tag of the RPC whose user data is to be unlocked.
+ */
+static inline void zrpc_{{ channel.name | lower }}_user_data_unlock(zrpc_tag tag)
+{
+	uint_fast8_t const bucket =
+		tag & ((1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT) - 1u);
+	k_mutex_unlock(zrpc_{{ channel.name | lower }}_user_data_locks[bucket]);
+}
+
+{% endif %}
+{% for rpc in channel.rpcs_to_host | selectattr("want_user_data") %}
+
+/** User data for RPC {{ rpc.name }} */
+static void *zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_user_data = NULL;
+{% endfor %}
 {% for rpc in channel.rpcs_to_host %}
 
 
@@ -689,8 +748,20 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 		if (unlikely(!rsphdr))
 			ret = -ENOMEM;
 	}
+	{% if rpc.want_user_data %}
+	if (!ret)
+		ret = zrpc_{{ channel.name | lower }}_user_data_lock(msghdr->id);
+	if (!ret) {
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve(
+			{{ rpc.parameters | map(attribute="name") | join(", ") }},
+			zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_user_data
+		);
+		zrpc_{{ channel.name | lower }}_user_data_unlock(msghdr->id);
+	}
+	{% else %}
 	if (!ret)
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	{% endif %}
 	{% if rpc.want_reply %}
 	if (ret >= 0)
 		{% if rpc.out_parameters | length %}
@@ -717,9 +788,80 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	return ret;
 }
 {% endfor %}
+{% for rpc in channel.rpcs_to_host | selectattr("want_user_data") %}
+
+
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_set_user_data(void *user_data)
+{
+	int ret;
+	zrpc_tag const tag =
+		ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }};
+
+	ret = zrpc_{{ channel.name | lower }}_user_data_lock(tag);
+	if (!ret) {
+		zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_user_data =
+				user_data;
+		zrpc_{{ channel.name | lower }}_user_data_unlock(tag);
+	}
+	return ret;
+}
+{% endfor %}
 
 
 #else /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
+{% if channel.rpcs_to_remote | selectattr("want_user_data") | list | length %}
+
+	{% for n in range(65) %}
+#if {{ n }} <= (1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT)
+static K_MUTEX_DEFINE(zrpc_{{ channel.name | lower }}_user_data_mutex{{ n }});
+#endif
+
+	{% endfor %}
+
+static struct k_mutex *zrpc_{{ channel.name | lower }}_user_data_locks[] = {
+	{% for n in range(65) %}
+#if {{ n }} <= (1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT)
+	[{{ n }}] = &zrpc_{{channel.name | lower}}_user_data_mutex{{ n }},
+#endif
+
+	{% endfor %}
+};
+
+
+/**
+ * @brief Lock user data bucket corresponding to @p tag.
+ *
+ * @param tag Tag of the RPC whose user data is to be locked.
+ *
+ * @retval 0      Bucket locked.
+ * @retval -errno An error occurred.
+ */
+static inline int zrpc_{{ channel.name | lower }}_user_data_lock(zrpc_tag tag)
+{
+	uint_fast8_t const bucket =
+		tag & ((1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT) - 1u);
+	return k_mutex_lock(zrpc_{{ channel.name | lower }}_user_data_locks[bucket], K_MSEC(5000));
+}
+
+
+/**
+ * @brief Unlock user data bucket corresponding to @p tag.
+ *
+ * @param tag Tag of the RPC whose user data is to be unlocked.
+ */
+static inline void zrpc_{{ channel.name | lower }}_user_data_unlock(zrpc_tag tag)
+{
+	uint_fast8_t const bucket =
+		tag & ((1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT) - 1u);
+	k_mutex_unlock(zrpc_{{ channel.name | lower }}_user_data_locks[bucket]);
+}
+
+{% endif %}
+{% for rpc in channel.rpcs_to_remote | selectattr("want_user_data") %}
+
+/** User data for RPC {{ rpc.name }} */
+static void *zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_user_data = NULL;
+{% endfor %}
 {% for rpc in channel.rpcs_to_remote %}
 
 /**
@@ -876,8 +1018,20 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 		if (unlikely(!rsphdr))
 			ret = -ENOMEM;
 	}
+	{% if rpc.want_user_data %}
+	if (!ret)
+		ret = zrpc_{{ channel.name | lower }}_user_data_lock(msghdr->id);
+	if (!ret) {
+		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve(
+			{{ rpc.parameters | map(attribute="name") | join(", ") }},
+			zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_user_data
+		);
+		zrpc_{{ channel.name | lower }}_user_data_unlock(msghdr->id);
+	}
+	{% else %}
 	if (!ret)
 		ret = zrpc_{{ channel.name | lower}}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="name") | join(", ") }});
+	{% endif %}
 	{% if rpc.want_reply %}
 	if (ret >= 0)
 		{% if rpc.out_parameters | length %}
@@ -901,6 +1055,25 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	}
 	{% endif %}
 
+	return ret;
+}
+{% endfor %}
+{% for rpc in channel.rpcs_to_remote | selectattr("want_user_data") %}
+
+
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_set_user_data(void *user_data)
+{
+	int ret;
+	zrpc_tag const tag =
+		ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }};
+
+	ret = zrpc_{{ channel.name | lower }}_user_data_lock(tag);
+
+	if (!ret) {
+		zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_user_data =
+				user_data;
+		zrpc_{{ channel.name | lower }}_user_data_unlock(tag);
+	}
 	return ret;
 }
 {% endfor %}

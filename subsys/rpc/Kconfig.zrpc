@@ -14,6 +14,22 @@ module = ZRPC
 module-str = zRPC
 source "subsys/logging/Kconfig.template.log_config"
 
+config ZRPC_USER_DATA_BUCKET_SHIFT
+	int "Number of user data buckets"
+	default 0
+	help
+	  RPC servicers that have requested user data are invoked under a lock
+	  to ensure that accesses to said data do not race. Thus, RPCs needing
+	  user data are subject to limited parallelism. This setting determines
+	  the degree of said parallelism.
+
+	  Each RPC channel contains (1 << CONFIG_ZRPC_USER_DATA_BUCKET_SHIFT)
+	  locks. Choosing a higher value for this setting will therefore
+	  reduce contention at the cost of increased memory usage.
+
+	  Valid choices are 0, 1, 2, 3, 4, 5 or 6.
+
+
 config ZRPC_PEDANTIC
 	bool "Enable pedantic zRPC checks"
 	default y

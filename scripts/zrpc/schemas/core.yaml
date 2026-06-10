@@ -95,6 +95,8 @@ mapping:
                           - remote
                   want_reply:
                     type: bool
+                  want_user_data:
+                    type: bool
             required: true
           description:
             type: str

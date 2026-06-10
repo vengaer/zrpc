@@ -75,14 +75,18 @@ extern "C" {
 
 /** RPC identifiers for channel {{ channel.name }} */
 enum zrpc_{{ channel.name | lower }}_rpc_id {
-{% for rpc in channel.rpcs %}
+{% for rpc in channel.rpcs | selectattr("want_user_data") %}
 	/** RPC {{ rpc.name }} */
-	{{ "%-42s" | format ("ZRPC_%s_RPC_ID_%s" | format( channel.name | upper, rpc.name | upper, )) }} = {{ loop.index - 1 }},
+	ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }},
+{% endfor %}
+{% for rpc in channel.rpcs | rejectattr("want_user_data") %}
+	/** RPC {{ rpc.name }} */
+	ZRPC_{{ channel.name | upper }}_RPC_ID_{{ rpc.name | upper }},
 {% endfor %}
 	/** Marker */
 	ZRPC_{{ channel.name | upper }}_RPC_ID_AFTER_LAST_,
 	/** Max RPC id for channel {{ channel.name }} */
-	{{ "%-42s" | format ("ZRPC_%s_RPC_ID_MAX" | format( channel.name | upper, )) }} = ZRPC_{{ channel.name | upper }}_RPC_ID_AFTER_LAST_ - 1,
+	ZRPC_{{ channel.name | upper }}_RPC_ID_MAX = ZRPC_{{ channel.name | upper }}_RPC_ID_AFTER_LAST_ - 1
 };
 
 {% for rpc in channel.rpcs %}
@@ -243,14 +247,30 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 		{% endif %}
 	{% endif %}
 {% endfor %}
+{% if rpc.want_user_data %}
+ * @param[in]      {{ "%-20s" | format( "user_data", ) }} User data previously registered with the zRPC core.
+{% endif %}
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
  * @retval >= 0   Success.
  * @retval -errno An error occurred.
  */
-extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({% for param in rpc.parameters %}{{ param.c_decl }}{{ ", " if not loop.last }}{% endfor %});
+extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.want_user_data %}, void *user_data{% endif %});
+{% endfor %}
+{% for rpc in channel.rpcs_to_host | selectattr("want_user_data") %}
 
+
+/**
+ * @brief Set user data for {{ rpc.name }}.
+ *
+ * @param user_data Pointer to arbitrary data to pass to
+ *                  zprc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve().
+ *
+ * @retval 0      RPC user data successfully updated.
+ * @retval -errno Data could not be set.
+ */
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_set_user_data(void *user_data);
 {% endfor %}
 
 
@@ -277,16 +297,31 @@ extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({% for p
 		{% endif %}
 	{% endif %}
 {% endfor %}
+{% if rpc.want_user_data %}
+ * @param[in]      {{ "%-20s" | format( "user_data", ) }} User data previously registered with the zRPC core.
+{% endif %}
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
  * @retval >= 0   Success.
  * @retval -errno An error occurred.
  */
-extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({% for param in rpc.parameters %}{{ param.c_decl }}{{ ", " if not loop.last }}{% endfor %});
-
+extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.want_user_data %}, void *user_data{% endif %});
 {% endfor %}
+{% for rpc in channel.rpcs_to_remote | selectattr("want_user_data") %}
 
+
+/**
+ * @brief Set user data for {{ rpc.name }}.
+ *
+ * @param user_data Pointer to arbitrary data to pass to
+ *                  zprc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve().
+ *
+ * @retval 0      RPC user data successfully updated.
+ * @retval -errno Data could not be set.
+ */
+int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_set_user_data(void *user_data);
+{% endfor %}
 
 #endif /* ZRPC_CHANNEL_{{ channel.name | upper }}_IN_HOST_MODE */
 

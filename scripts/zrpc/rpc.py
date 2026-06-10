@@ -342,6 +342,7 @@ class Rpc:
     rpc_id: int
     crc: str
     want_reply: bool
+    want_user_data: bool
 
     def __post_init__(self) -> None:
         if (match := re.match("^(0x)?[0-9a-fA-F]{1,2}$", self.crc)) is None:
@@ -452,6 +453,7 @@ class Rpc:
             rpc_id=index,
             crc=crc.hexdigest(),
             want_reply=yml.get("want_reply", True),
+            want_user_data=yml.get("want_user_data", False),
         )
 
 

@@ -37,5 +37,6 @@ channels:
           Forward complete RTP packet over RPC.
         origin: [ remote ]
         want_reply: False
+        want_user_data: True
     description:
       VirtIO-backed shared memory channel.
