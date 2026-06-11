@@ -265,13 +265,15 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
 	int ret;
+	{% if rpc.want_reply %}
 	struct zrpc_attr *attr;
 	struct zrpc_attr *attrs[] = {
 		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
-	{% endfor %}
+		{% endfor %}
 	};
+	{% endif %}
 	struct zrpc_msghdr *msghdr;
 	uint32_t const in_required =
 		sizeof(struct zrpc_msghdr)
@@ -450,13 +452,15 @@ static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_decode_
 int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
 	int ret;
+	{% if rpc.want_reply %}
 	struct zrpc_attr *attr;
 	struct zrpc_attr *attrs[] = {
 		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_FIX_PARAM_RET] = NULL,
-	{% for param in rpc.out_parameters %}
+		{% for param in rpc.out_parameters %}
 		[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}] = NULL,
-	{% endfor %}
+		{% endfor %}
 	};
+	{% endif %}
 	struct zrpc_msghdr *msghdr;
 	uint32_t const in_required =
 		sizeof(struct zrpc_msghdr)
