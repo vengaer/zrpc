@@ -153,6 +153,9 @@ struct zrpc_virtio_data {
 	/** Mutex protecting @c pending_replies */
 	struct k_mutex pending_mutex;
 
+	/** Mutex protecting @c rx_queue */
+	struct k_mutex rx_mutex;
+
 	/** List of RPCs awaiting replies */
 	sys_slist_t pending_replies;
 
@@ -619,7 +622,11 @@ static int zrpc_virtio_rp_ept_cb(struct rpmsg_endpoint *ept, void *rpdata,
 	VDEV_DBG(&data->vdev,
 		"Queueing up message with id 0x%04" PRIx16 ", seq 0x%04" PRIx16,
 		msghdr->id, msghdr->seq);
-	ret = k_msgq_put(data->rx_queue, &msghdr, K_NO_WAIT);
+	ret = k_mutex_lock(&data->rx_mutex, K_NO_WAIT);
+	if (!ret) {
+		ret = k_msgq_put(data->rx_queue, &msghdr, K_NO_WAIT);
+		k_mutex_unlock(&data->rx_mutex);
+	}
 	if (!ret)
 		ret = k_work_submit_to_queue(&data->rx_work_q, &data->rx_work);
 	if (ret < 0)
@@ -704,7 +711,14 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 	cfg = dev->config;
 
 	do {
+		ret = k_mutex_lock(&data->rx_mutex,  K_MSEC(50));
+		if (ret) {
+			VDEV_ERR(&data->vdev, "Error locking RX mutex: %d",
+									-ret);
+			return;
+		}
 		ret = k_msgq_get(data->rx_queue, &msghdr, K_NO_WAIT);
+		k_mutex_unlock(&data->rx_mutex);
 		if (ret) {
 			if (ret != -ENOMSG) {
 				VDEV_ERR(&data->vdev,
@@ -1059,6 +1073,7 @@ static int zrpc_virtio_init(struct device const *dev)
 
 	sys_slist_init(&data->pending_replies);
 	k_mutex_init(&data->pending_mutex);
+	k_mutex_init(&data->rx_mutex);
 
 	ret = zrpc_virtio_init_metal(dev);
 	if (!ret)
