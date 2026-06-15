@@ -703,19 +703,24 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 	dev = data->dev;
 	cfg = dev->config;
 
-	ret = k_msgq_get(data->rx_queue, &msghdr, K_NO_WAIT);
-	if (ret) {
-		VDEV_ERR(&data->vdev,
-			"Error extracting message from RX queue: %d", -ret);
-		return;
-	}
+	do {
+		ret = k_msgq_get(data->rx_queue, &msghdr, K_NO_WAIT);
+		if (ret) {
+			if (ret != -ENOMSG) {
+				VDEV_ERR(&data->vdev,
+					"Error extracting from RX queue: %d",
+					-ret);
+			}
+			return;
+		}
 
-	if (msghdr->flags & ZRPC_FLAG_REPLY)
-		ret = zrpc_virtio_process_reply(dev, msghdr);
-	else
-		ret = zrpc_rx_dispatch(cfg->channel_id, msghdr);
-	if (ret)
-		VDEV_ERR(&data->vdev, "Error processing RPC: %d", -ret);
+		if (msghdr->flags & ZRPC_FLAG_REPLY)
+			ret = zrpc_virtio_process_reply(dev, msghdr);
+		else
+			ret = zrpc_rx_dispatch(cfg->channel_id, msghdr);
+		if (ret)
+			VDEV_ERR(&data->vdev, "Error processing RPC: %d", -ret);
+	} while (1);
 }
 
 /**
