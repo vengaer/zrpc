@@ -996,7 +996,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 
 	attr = attrs[ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper}}];
 		{% if param.typedecl.is_ptr %}
-	static_assert(alignof(param.typedecl.c_decl_unqual) <= zrpc_alignto,
+	static_assert(alignof({{ param.typedecl.c_decl_unqual }}) <= zrpc_alignto,
 		"Alignment of {{ param.name | lower }} parameter to {{ rpc.name | lower }} is insufficient");
 	{{ param.name | lower }} = zrpc_attr_data(attr);
 		{% else %}
