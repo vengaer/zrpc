@@ -284,6 +284,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	uint32_t const out_required =
 	{% if rpc.want_reply %}
 		sizeof(struct zrpc_msghdr)
+		+ sizeof(struct zrpc_attr) + zrpc_align(sizeof(uint32_t))
 		{% for param in rpc.out_parameters %}
 		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
 		{% endfor %}
@@ -471,6 +472,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 	uint32_t const out_required =
 	{% if rpc.want_reply %}
 		sizeof(struct zrpc_msghdr)
+		+ sizeof(struct zrpc_attr) + zrpc_align(sizeof(uint32_t))
 		{% for param in rpc.out_parameters %}
 		+ sizeof(struct zrpc_attr) + zrpc_align({{ param.size }})
 		{% endfor %}
