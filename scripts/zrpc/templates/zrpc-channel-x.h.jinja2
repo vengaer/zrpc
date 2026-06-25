@@ -155,7 +155,7 @@ static_assert(
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
- * @retval >= 0       Success.
+ * @retval >=0        Success, value returned by RPC servicer.
  * @retval -ENOMEM    zRPC heap exhausted.
  * @retval -ENODATA   Peer omitted one or more attributes.
  * @retval -ENOBUFS   Peer wrote a value too large for an out parameter.
@@ -197,7 +197,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
- * @retval >= 0       Success.
+ * @retval >=0        Success, value returned by RPC servicer.
  * @retval -ENOMEM    zRPC heap exhausted.
  * @retval -ENODATA   Peer omitted one or more attributes.
  * @retval -ENOBUFS   Peer wrote a value too large for an out parameter.
@@ -255,7 +255,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
- * @retval >= 0   Success.
+ * @retval >=0    Value to return to caller.
  * @retval -errno An error occurred.
  */
 extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.want_user_data %}, void *user_data{% endif %});
@@ -305,7 +305,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_set_user_data(void *u
 {% if rpc.non_void_parameters | length %}
  *
 {% endif %}
- * @retval >= 0   Success.
+ * @retval >=0    Value to return to caller.
  * @retval -errno An error occurred.
  */
 extern int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_serve({{ rpc.parameters | map(attribute="c_decl") | join(", ") }}{% if rpc.want_user_data %}, void *user_data{% endif %});
