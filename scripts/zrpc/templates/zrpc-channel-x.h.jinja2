@@ -120,7 +120,7 @@ static_assert(
 
 /**
  * @brief Outgoing RPCs for channel {{ channel.name }}
- * @defgroup zrpc_channel_{{ channel.name}}_out
+ * @defgroup zrpc_channel_{{ channel.name}}_out Outgoing RPCs
  * @ingroup zrpc_channel_{{ channel.name }}
  * @{
  */
@@ -216,7 +216,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 
 /**
  * @brief Incoming RPCs for channel {{ channel.name }}
- * @defgroup zrpc_channel_{{ channel.name}}_in
+ * @defgroup zrpc_channel_{{ channel.name}}_in Incoming RPCs
  * @ingroup zrpc_channel_{{ channel.name }}
  * @{
  *
