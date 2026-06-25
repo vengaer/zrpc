@@ -228,6 +228,8 @@ class Parameter:
         if self.typedecl.ident == IdentType.VOID:
             return
 
+        self.description = self.description.replace("\n", "\n *" + 4 * " ")
+
         if self.typedecl.is_str:
             # Allow fixed-size strings
             if not self.size:
@@ -345,6 +347,8 @@ class Rpc:
     want_user_data: bool
 
     def __post_init__(self) -> None:
+        self.description = self.description.replace("\n", "\n *" + 4 * " ")
+
         if (match := re.match("^(0x)?[0-9a-fA-F]{1,2}$", self.crc)) is None:
             raise InvalidHexDigest(f"{self.crc} is not a valid 8 bit CRC")
 
@@ -465,6 +469,9 @@ class Channel:
     chid: int
     rpcs: List[Rpc]
     description: str
+
+    def __post_init__(self) -> None:
+        self.description = self.description.replace("\n", "\n *" + 4 * " ")
 
     @property
     def rpcs_from_host(self) -> List[Rpc]:
