@@ -675,7 +675,7 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 	struct zrpc_virtio_data *data = dev->data;
 	struct zrpc_virtio_config const *cfg = dev->config;
 
-	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(5000));
+	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(200));
 	if (ret) {
 		VDEV_ERR(&data->vdev, "Could not lock pending mutex: %d", -ret);
 		return ret;
