@@ -218,6 +218,9 @@ struct zrpc_virtio_config {
 	/** Number of milliseconds before a received reply is discarded */
 	uint32_t reply_lifetime;
 
+	/** Number of milliseconds t wait for an RPC with the expected seq */
+	uint32_t rx_timeout;
+
 	/** Size of the @c ipm_stack in the corresponding data struct */
 	size_t ipm_stack_size;
 
@@ -452,6 +455,7 @@ static int zrpc_virtio_await_reply(struct device const *dev, uint16_t seq,
 {
 	int ret;
 	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
 
 	node->seq = seq;
 	node->msghdr = NULL;
@@ -464,7 +468,7 @@ static int zrpc_virtio_await_reply(struct device const *dev, uint16_t seq,
 	sys_slist_append(&data->pending_replies, &node->head);
 	do {
 		ret = k_condvar_wait(&node->cv, &data->pending_mutex,
-			K_MSEC(2000));
+			K_MSEC(cfg->rx_timeout));
 	}  while (!ret && !node->msghdr);
 	sys_slist_find_and_remove(&data->pending_replies, &node->head);
 
@@ -1187,6 +1191,9 @@ static int zrpc_virtio_init(struct device const *dev)
 		),							\
 		.reply_lifetime = DT_INST_PROP(				\
 			n, zrpc_virtio_reply_lifetime			\
+		),							\
+		.rx_timeout = DT_INST_PROP(				\
+			n, zrpc_virtio_rx_timeout			\
 		),							\
 		.ipm_stack_size = K_THREAD_STACK_SIZEOF(		\
 			zrpc_virtio_ipm_stack_ ## n			\

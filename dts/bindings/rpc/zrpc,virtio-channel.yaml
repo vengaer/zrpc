@@ -99,3 +99,10 @@ properties:
       which is determined by the zrpc,virtio-max-concurrent-replies - the larger the risk of replies
       being discarded due to memory limitations. This risk is furter increased by issuing RPCs at a
       high rate.
+
+  zrpc,virtio-rx-timeout:
+    type: int
+    default: 2000
+    description: |
+      Number of milliseconds to block in the zrpc_recv syscall waiting for a message with the
+      expected sequence number.
