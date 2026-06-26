@@ -88,3 +88,14 @@ properties:
       Size of the memory chunks in which RPCs are transmitted. This setting effectively determines
       the maximum size of RPCs allowed over the channel. At the time of writing, said maximum
       is the value of this property - 16.
+
+  zrpc,virtio-reply-lifetime:
+    type: int
+    default: 2000
+    description: |
+      Number of milliseconds an RPC is kept in the reply queue before being discarded.
+
+      The longer an RPC remains in the queue, the larger the risk of the latter - the size of
+      which is determined by the zrpc,virtio-max-concurrent-replies - the larger the risk of replies
+      being discarded due to memory limitations. This risk is furter increased by issuing RPCs at a
+      high rate.

@@ -106,6 +106,9 @@ struct zrpc_virtio_wait_node {
 	/** Sequence number of the expected reply */
 	uint16_t seq;
 
+	/** Point when the message expires */
+	k_timepoint_t expiry;
+
 	/** Condition variable to wait on */
 	struct k_condvar cv;
 
@@ -211,6 +214,9 @@ struct zrpc_virtio_config {
 
 	/** Maximum size of each chunk transmitted in the rings */
 	uint32_t tx_chunk_size;
+
+	/** Number of milliseconds before a received reply is discarded */
+	uint32_t reply_lifetime;
 
 	/** Size of the @c ipm_stack in the corresponding data struct */
 	size_t ipm_stack_size;
@@ -449,6 +455,7 @@ static int zrpc_virtio_await_reply(struct device const *dev, uint16_t seq,
 
 	node->seq = seq;
 	node->msghdr = NULL;
+	node->expiry = sys_timepoint_calc(K_FOREVER);
 
 	ret = k_condvar_init(&node->cv);
 	if (ret)
@@ -656,10 +663,13 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 		struct zrpc_msghdr *msghdr)
 {
 	int ret;
-	bool signalled;
 	void *mem;
-	struct zrpc_virtio_wait_node *node;
+	bool signalled;
+	sys_snode_t *prev;
+	sys_slist_t *pending;
+	struct zrpc_virtio_wait_node *node, *next;
 	struct zrpc_virtio_data *data = dev->data;
+	struct zrpc_virtio_config const *cfg = dev->config;
 
 	ret = k_mutex_lock(&data->pending_mutex, K_MSEC(5000));
 	if (ret) {
@@ -667,15 +677,30 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 		return ret;
 	}
 
+	prev = NULL;
 	signalled = false;
-	SYS_SLIST_FOR_EACH_CONTAINER(&data->pending_replies, node, head) {
-		if (node->seq != msghdr->seq)
-			continue;
+	pending = &data->pending_replies;
+	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(pending, node, next, head) {
+		if (node->seq == msghdr->seq) {
+			node->msghdr = msghdr;
+			k_condvar_signal(&node->cv);
+			signalled = true;
+			break;
+		}
 
-		node->msghdr = msghdr;
-		k_condvar_signal(&node->cv);
-		signalled = true;
-		break;
+		VDEV_DBG(&data->vdev, "Seq 0x%" PRIx16 " remains in queue",
+								node->seq);
+
+		if (sys_timepoint_expired(node->expiry)) {
+			VDEV_INF(&data->vdev,
+				"RPC with seq 0x%" PRIx16 " expired",
+				node->seq);
+
+			sys_slist_remove(pending, prev, &node->head);
+			k_mem_slab_free(data->wait_slab, data->wait_slab);
+		}
+		else
+			prev = &node->head;
 	}
 
 	if (!signalled) {
@@ -684,6 +709,9 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 		if (!ret) {
 			node->seq = msghdr->seq;
 			node->msghdr = msghdr;
+			node->expiry = sys_timepoint_calc(
+				K_MSEC(cfg->reply_lifetime)
+			);
 			sys_slist_append(&data->pending_replies, &node->head);
 		}
 	}
@@ -1156,6 +1184,9 @@ static int zrpc_virtio_init(struct device const *dev)
 		.channel_id = DT_INST_PROP(n, zrpc_channel_id),		\
 		.tx_chunk_size = DT_INST_PROP(				\
 			n, zrpc_virtio_tx_chunk_size			\
+		),							\
+		.reply_lifetime = DT_INST_PROP(				\
+			n, zrpc_virtio_reply_lifetime			\
 		),							\
 		.ipm_stack_size = K_THREAD_STACK_SIZEOF(		\
 			zrpc_virtio_ipm_stack_ ## n			\
