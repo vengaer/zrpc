@@ -733,7 +733,10 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 		else
 			ret = zrpc_rx_dispatch(cfg->channel_id, msghdr);
 		if (ret)
-			VDEV_ERR(&data->vdev, "Error processing RPC: %d", -ret);
+			VDEV_ERR(&data->vdev, "Error processing %s: %d",
+				msghdr->flags & ZRPC_FLAG_REPLY ?
+					"reply" : "incoming RPC",
+				-ret);
 	} while (1);
 }
 
