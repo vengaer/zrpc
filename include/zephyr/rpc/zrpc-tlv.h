@@ -640,8 +640,8 @@ size_t zrpc_tlvb_map_(struct zrpc_tlvb *tlvb, struct zrpc_attr **attrs,
  *
  * @return Number of entries in @c attrs that were populated.
  */
-size_t zrpc_tlvb_cmap_(struct zrpc_tlvb const *tlvb, struct zrpc_attr const **attrs,
-	size_t nattrs);
+size_t zrpc_tlvb_cmap_(struct zrpc_tlvb const *tlvb,
+		struct zrpc_attr const **attrs, size_t nattrs);
 
 
 /**
@@ -700,5 +700,67 @@ size_t zrpc_tlvb_cmap_(struct zrpc_tlvb const *tlvb, struct zrpc_attr const **at
 #ifdef __cplusplus
 }
 #endif
+
+
+#ifdef __cplusplus
+
+#undef zrpc_tlvb_head
+#undef zrpc_tlvb_start
+
+#undef zrpc_attr_data
+#undef zrpc_attr_next
+#undef zrpc_tlvb_map
+
+
+inline struct zrpc_attr *zrpc_tlvb_head(struct zrpc_tlvb *tlvb) {
+	return zrpc_tlvb_head_(tlvb);
+}
+
+inline struct zrpc_attr const *zrpc_tlvb_head(struct zrpc_tlvb const *tlvb) {
+	return zrpc_tlvb_chead_(tlvb);
+}
+
+inline struct zrpc_attr *zrpc_tlvb_start(struct zrpc_tlvb *tlvb)
+{
+	return zrpc_tlvb_start_(tlvb);
+}
+
+inline struct zrpc_attr const *zrpc_tlvbv_start(struct zrpc_tlvb const *tlvb)
+{
+	return zrpc_tlvb_cstart_(tlvb);
+}
+
+inline uint8_t *zrpc_attr_data(struct zrpc_attr *attr)
+{
+	return zrpc_attr_data_(attr);
+}
+
+inline uint8_t const *zrpc_attr_data(struct zrpc_attr const *attr)
+{
+	return zrpc_attr_cdata_(attr);
+}
+
+inline struct zrpc_attr *zrpc_attr_next(struct zrpc_attr *attr)
+{
+	return zrpc_attr_next_(attr);
+}
+
+inline struct zrpc_attr const *zrpc_attr_next(struct zrpc_attr const *attr) {
+	return zrpc_attr_cnext_(attr);
+}
+
+inline size_t zrpc_tlvb_map(struct zrpc_tlvb *tlvb, struct zrpc_attr **attrs,
+						size_t nattrs)
+{
+	return zrpc_tlvb_map_(tlvb, attrs, nattrs);
+}
+
+inline size_t zrpc_tlvb_map(struct zrpc_tlvb const *tlvb,
+		struct zrpc_attr const **attrs, size_t nattrs)
+{
+	return zrpc_tlvb_cmap_(tlvb, attrs, nattrs);
+}
+
+#endif /* __cplusplus */
 
 #endif /* ZEPHYR_INCLUDE_RPC_ZRPC_TLV_H_ */
