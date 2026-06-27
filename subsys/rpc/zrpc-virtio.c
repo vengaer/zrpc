@@ -668,7 +668,7 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 {
 	int ret;
 	void *mem;
-	bool signalled;
+	bool signaled;
 	sys_snode_t *prev;
 	sys_slist_t *pending;
 	struct zrpc_virtio_wait_node *node, *next;
@@ -682,13 +682,13 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 	}
 
 	prev = NULL;
-	signalled = false;
+	signaled = false;
 	pending = &data->pending_replies;
 	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(pending, node, next, head) {
 		if (node->seq == msghdr->seq) {
 			node->msghdr = msghdr;
 			k_condvar_signal(&node->cv);
-			signalled = true;
+			signaled = true;
 			break;
 		}
 
@@ -707,7 +707,7 @@ static int zrpc_virtio_process_reply(struct device const *dev,
 			prev = &node->head;
 	}
 
-	if (!signalled) {
+	if (!signaled) {
 		ret = k_mem_slab_alloc(data->wait_slab, &mem, K_MSEC(1000));
 		node = mem;
 		if (!ret) {
