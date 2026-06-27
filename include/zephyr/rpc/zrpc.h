@@ -28,11 +28,6 @@ extern "C" {
  * @brief zRPC core implementation.
  * @defgroup zrpc zRPC
  * @{
- *
- * @brief zRPC backends
- * @defgroup zrpc_backend zRPC backends
- * @{
- * @}
  */
 
 /** Maximum value of the @c zrpc_tag type */

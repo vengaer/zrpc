@@ -1,0 +1,22 @@
+/* Logo background color */
+.wy-side-nav-search, .sidebar {
+    background-color: #000000 !important;
+}
+
+/* Color of menu headings */
+.wy-menu-vertical header,
+.wy-menu-vertical p.caption {
+    color: #6c52bf !important;
+}
+
+a {
+    color: #6c52bf !important;
+}
+
+a:hover {
+    color: #2e254d !important;
+}
+
+a:visited {
+    color: #2e254d !important;
+}

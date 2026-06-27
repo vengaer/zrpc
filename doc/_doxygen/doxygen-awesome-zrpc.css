@@ -1,0 +1,110 @@
+/*
+ * Copyright (c) 2026 Vilhelm Engström
+ * Copyright (c) 2021-2025 Nordic Semiconductor ASA
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+html {
+    --primary-color: #6c52bf;
+    --primary-dark-color: #000000;
+    --primary-light-color: #ffffff;
+    --primary-lighter-color: #ffffff;
+    --primary-lightest-color: #ffffff;
+
+    --side-nav-background: #000000;
+    --side-nav-foreground: #d9d9d9;
+
+    --page-outline-vis: #3b4978;
+
+    --searchbar-background: var(--page-background-color);
+    --searchbar-foreground: var(--page-foreground-color);
+
+    --link-color: #6c52bf;
+    --param-color: #b71c1c;
+
+    --side-nav-fixed-width: 300px;
+    --top-height: 220px;
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        color-scheme: dark;
+
+        --primary-color: #6c52bf;
+        --primary-dark-color: #cb99f6;
+        --primary-light-color: #7929d2;
+        --primary-lighter-color: #191e21;
+        --primary-lightest-color: #191a1c;
+
+        --side-nav-background: #252628;
+        --side-nav-foreground: var(--page-foreground-color);
+
+        --page-outline-vis: #44568d;
+
+        --param-color: #ef9a9a;
+    }
+}
+
+html.dark-mode {
+    color-scheme: dark;
+
+    --primary-color: #6c52bf;
+    --primary-dark-color: #cb99f6;
+    --primary-light-color: #7929d2;
+    --primary-lighter-color: #191e21;
+    --primary-lightest-color: #191a1c;
+
+    --side-nav-background: #252628;
+    --side-nav-foreground: var(--page-foreground-color);
+
+    --param-color: #ef9a9a;
+}
+
+a:link, a:visited, a:hover, a:focus, a:active {
+    color: var(--link-color) !important;
+}
+
+.paramname {
+    color: var(--param-color);
+}
+
+dl.section dd, dl.bug dd, dl.deprecated dd {
+    margin-inline-start: revert;
+}
+
+/* adjust top and title to ~match Sphinx docs */
+#top {
+    background: var(--side-nav-background);
+}
+
+#titlearea {
+    padding-bottom: 0;
+}
+
+#titlearea table {
+    width: 100%;
+}
+
+#projectlogo img {
+    width: 200px;
+    height: 95px;
+    max-height: none !important;
+    padding-top: 12px;
+}
+
+#projectalign {
+    display: none;
+}
+
+@media screen and (min-width: 767px) {
+    #doc-content {
+        padding-top: calc(var(--top-height) - 180px);
+    }
+}
+
+/* style for re-injected version */
+#projectversion {
+    color: var(--side-nav-foreground);
+    padding-top: 25px;
+    text-align: center;
+}

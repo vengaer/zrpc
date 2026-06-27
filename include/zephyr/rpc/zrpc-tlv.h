@@ -30,7 +30,7 @@ extern "C" {
 
 /**
  * @brief zRPC TLV implementation.
- * @defgroup zrpc_tlvb zRPC
+ * @defgroup zrpc_tlvb zRPC TLV format
  * @ingroup zrpc
  * @{
  */
@@ -123,7 +123,7 @@ inline int zrpc_tlvb_skip(struct zrpc_tlvb *tlvb, size_t len)
 
 
 /**
- * @param Obtain unqualified pointer to the attribute at the buffer head.
+ * @brief Obtain unqualified pointer to the attribute at the buffer head.
  *
  * Intended primarily for use in zrpc_tlvb_head().
  *
@@ -138,7 +138,7 @@ inline struct zrpc_attr *zrpc_tlvb_head_(struct zrpc_tlvb *tlvb)
 
 
 /**
- * @param Obtain const-qualified pointer to the attribute at the buffer head.
+ * @brief Obtain const-qualified pointer to the attribute at the buffer head.
  *
  * Intended primarily for use in zrpc_tlvb_head().
  *
@@ -220,7 +220,7 @@ inline struct zrpc_attr const *zrpc_tlvb_cstart_(struct zrpc_tlvb const *tlvb)
  *       zrpc_tlvb_empty() to determine whether or not the TLV buffer is
  *	 empty.
  *
- * @param tlvb The TLV buffer.
+ * @param tlvb_ The TLV buffer.
  *
  * @return Suitably qualified pointer to the first attribute.
  */
@@ -334,7 +334,7 @@ inline uint8_t const *zrpc_attr_cdata_(struct zrpc_attr const *attr)
  * Invokes either zrpc_attr_data_() or zrpc_attr_cdata_() depending
  * on the qualifier of @c attr.
  *
- * @param Pointer to a <tt>struct zrpc_attr</tt>.
+ * @param attr Pointer to a <tt>struct zrpc_attr</tt>.
  *
  * @return Potentially const-qualified pointer to the payload of @c attr.
  */
@@ -692,7 +692,7 @@ size_t zrpc_tlvb_cmap_(struct zrpc_tlvb const *tlvb,
  *
  * @endcode
  *
- * @param tlvb   The TLV buffer.
+ * @param tlvb_  The TLV buffer.
  * @param attrs  Array of <tt>struct zrpc_attr</tt> attributes to populate.
  * @param nattrs Number of entries in @c attrs.
  *

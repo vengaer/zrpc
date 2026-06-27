@@ -1,0 +1,51 @@
+{% extends "default/index.html.jinja2" %}
+{% block nav %}
+    <h2>Top-Level Modules</h2>
+    <ul>
+        {% for submodule in all_modules if "." not in submodule and not submodule.startswith("_") %}
+            <li><a href="{{ submodule.replace(".","/") }}.html">{{ submodule }}</a></li>
+        {% endfor %}
+    </ul>
+
+    <style>{% include "sidebar.css" %}</style>
+{% endblock %}
+
+{% block content %}
+    <header class="pdoc">
+        {% block logo %}
+            {% if logo %}
+                {% if logo_link %}<a href="{{ logo_link }}">{% endif %}
+                <img src="{{ logo }}" alt="project logo"/>
+                {% if logo_link %}</a>{% endif %}
+            {% else %}
+                <a href="https://pdoc.dev">
+                    <img src="data:image/svg+xml,{% filter urlencode %}{% include "resources/pdoc-logo.svg" %}{%      endfilter %}"
+                         alt="pdoc"/>
+                </a>
+            {% endif %}
+        {% endblock %}
+        {% if search %}
+            <input type="search" placeholder="Search API Documentation..." aria-label="search box">
+        {% endif %}
+    </header>
+    <main class="pdoc">
+        <h2>Python Module Overview</h2>
+        <p>
+            The MinicomIP W5 manifest repository contains an ever growing set of python scripts, the
+            functionality of which range from extending the West meta tool to parsing and generating
+            various files.<br>
+
+            The documentation generated from the docstring of the various scripts is gathered and
+            made browsable here. For documentation generated for the code incorporated in the
+            images, refer to the <a href="/doxygen">API documentation</a>.
+        </p>
+    </main>
+    {% if search %}
+        {% include "search.html.jinja2" %}
+    {% endif %}
+
+    <style>{% include "body.css" %}</style>
+
+{% endblock %}
+
+
