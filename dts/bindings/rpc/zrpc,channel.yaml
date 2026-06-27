@@ -19,11 +19,15 @@ properties:
       Should match the ID of one of the channels in the zRPC configuration file. The RPCs
       defined for said channels are made available for the channel node.
 
+      Must be the same for the two endpoints in a channel.
+
   zrpc,host:
     type: boolean
     description: |
       Set to configure zRPC node in host mode. Must be set for exactly one of the peers
       in a pair.
+
+      Must be set for exactly one endpoint in a channel.
 
   zrpc,heap-size:
     type: int
@@ -33,24 +37,18 @@ properties:
 
 examples:
   - |
-    /* In devicetree */
     &sram4 {
       virtio_channel_0: memory@38000000 {
+        /* "zrpc,channel" must always be present, regardless of backend */
         compatible = "zrpc,virtio-channel";
                      "zrpc,channel";
-        zrpc,channel-id = <0>; /* Attach the virtio channel from the configuration */
+
+        /* Attach RPC channel 0 to this device */
+        zrpc,channel-id = <0>;
+
+        /* This endpoint is RPC host */
+        zrpc,host;
+
+        /* ... */
       };
     };
-
-    # In zRPC configuration
-    channels:
-      - name: virtio
-        id: 0  # Attached to the virtio_channel_0 device
-        rpcs:
-          - name: heartbeat
-            brief: Send heartbeat to peer.
-            description: |
-              Send a heartbeat RPC to the peer.
-            origin: [ controller, target ]
-        description:
-          VirtIO-backed shared memory channel.

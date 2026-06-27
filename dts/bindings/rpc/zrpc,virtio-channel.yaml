@@ -17,6 +17,8 @@ properties:
     description: |
       Address and size of the shared memory area to use.
 
+      Must be the same for both channel endpoints.
+
   zrpc,virtio-rx-stack-size:
     type: int
     default: 512
@@ -35,6 +37,9 @@ properties:
     description: |
       Handle referring to the inter-process mailbox to use.
 
+      Typically the same for both channel endpoints. Some IPM implementations may, however, require
+      the values to differ.
+
   zrpc,virtio-ctrl-block-size:
     type: int
     default: 0x400
@@ -44,7 +49,7 @@ properties:
       The backend reserves this number of bytes at the start of the shared memory section identified
       in the reg property for status flags.
 
-      If unsure, leave unaltered.
+      If unsure, leave unaltered. Must be the same for both endpoints.
 
   zrpc,virtio-virtqueue-num-extra-descs:
     type: int
@@ -52,7 +57,7 @@ properties:
     description:
       Number of struct vq_desc_extra instances to place after each virtqueue.
 
-      If unsure, leave unaltered.
+      If unsure, leave unaltered. Should be the same for both endpoints.
 
   zrpc,virtio-rx-queue-size:
     type: int
@@ -89,6 +94,8 @@ properties:
       the maximum size of RPCs allowed over the channel. At the time of writing, said maximum
       is the value of this property - 16.
 
+      Must be the same for both endpoints.
+
   zrpc,virtio-reply-lifetime:
     type: int
     default: 2000
@@ -106,3 +113,76 @@ properties:
     description: |
       Number of milliseconds to block in the zrpc_recv syscall waiting for a message with the
       expected sequence number.
+
+examples: |
+  # VirtIO configuration for the STM32H755 Cortex-M7
+  -
+    /* STM32 HSEM IPM mailbox */
+    &mailbox {
+      status = "okay";
+    };
+
+    /* sram4 is shared between the Cortex-M4 and the Cortex-M7 */
+    &sram4 {
+      #address-cells = <1>;
+      #address-cells = <1>;
+
+      status = "okay";
+
+      zrpc_virtio: memory@38000000 {
+        /* "zrpc,channel" must always be present */
+        compatible = "zrpc,virtio-channel",
+                     "zrpc,channel";
+
+        /* Use the entire region */
+        reg = <0x38000000 DT_SIZE_K(64)>;
+
+        /* Must match the ID of the channel specified in the
+         * configuration file */
+        zrpc,channel-id = <0>;
+
+        /* The Cortex-M7 is master */
+        zrpc,host;
+
+        /* Use HSEM-based inter-CPU notifications */
+        zrpc,virtio-ipm-handle = <&mailbox>;
+
+        /* Allow RPCs of at most 1024 bytes in size */
+        zrpc,virtio-tx-chunk-size = <1024>;
+
+        status = "okay";
+      };
+    };
+
+  # VirtIO configuration for the STM32H755 Cortex-M4
+  -
+    /* Use the same IPM implementation as on the Cortex-M7 */
+    &mailbox {
+      status = "okay";
+    };
+
+    &sram4 {
+      #address-cells = <1>;
+      #address-cells = <1>;
+
+      status = "okay";
+
+      /* Everything but the zrpc,host property will typically match
+       * the configuration used on the Cortex-M7 */
+      zrpc_virtio: memory@38000000 {
+        compatible = "zrpc,virtio-channel",
+                     "zrpc,channel";
+
+        reg = <0x38000000 DT_SIZE_K(64)>;
+
+        zrpc,channel-id = <0>;
+
+        /* The Cortex-M4 is slave, leave zrpc,host unset here */
+
+        zrpc,virtio-ipm-handle = <&mailbox>;
+
+        zrpc,virtio-tx-chunk-size = <1024>;
+
+        status = "okay";
+      };
+    };

@@ -30,7 +30,7 @@ extern "C" {
 
 /**
  * @brief zRPC TLV implementation.
- * @defgroup zrpc_tlvb zRPC TLV format
+ * @defgroup zrpc_tlvb zRPC binary format
  * @ingroup zrpc
  * @{
  */
