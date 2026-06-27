@@ -233,6 +233,7 @@ class Parameter:
     param_id: int
     direction: int
     is_size_parameter: bool = False
+    is_fixed_size_string: bool = False
 
     def __post_init__(self) -> None:
         if self.typedecl.ident == IdentType.VOID:
@@ -249,6 +250,8 @@ class Parameter:
                     raise InvalidDirectionError(
                         f"Terminated string parameter {self.name} cannot be used as out-only parameter"
                     )
+            else:
+                self.is_fixed_size_string = True
 
         elif not self.typedecl.is_ptr:
             if self.size:
@@ -416,6 +419,11 @@ class Rpc:
 
             if param.size == param.name:
                 raise SelfRefError(f"Size field of {param.name} references itself")
+
+            if by_name[param.size].typedecl.is_ptr:
+                raise InvalidSizeFieldError(
+                    f"Size field '{param.size}' is a pointer, should be integral"
+                )
 
             if param.size in by_name:
                 by_name[param.size].is_size_parameter = True

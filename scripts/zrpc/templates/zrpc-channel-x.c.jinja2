@@ -205,7 +205,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 
 	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
-			{% if param.typedecl.is_str %}
+			{% if param.typedecl.is_str and not param.is_fixed_size_string %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
 			{% else %}
 			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
@@ -393,7 +393,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_request
 
 	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
-			{% if param.typedecl.is_str %}
+			{% if param.typedecl.is_str and not param.is_fixed_size_string %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
 			{% else %}
 			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
@@ -662,7 +662,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 
 	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
-			{% if param.typedecl.is_str %}
+			{% if param.typedecl.is_str and not param.is_fixed_size_string %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
 			{% else %}
 			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
@@ -933,7 +933,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_encode_reply(s
 
 	tag = ZRPC_{{ channel.name | upper }}_{{ rpc.name | upper }}_PARAM_{{ param.name | upper }};
 		{% if param.typedecl.is_ptr %}
-			{% if param.typedecl.is_str %}
+			{% if param.typedecl.is_str and not param.is_fixed_size_string %}
 			{% set invocation = "zrpc_tlvb_put_string(&tlvb, tag, %s)" | format( param.name, )  %}
 			{% else %}
 			{% set invocation = "zrpc_tlvb_put(&tlvb, tag, %s, %s)" | format( param.name, param.bytesize,  ) %}
