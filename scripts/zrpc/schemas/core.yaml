@@ -93,6 +93,7 @@ mapping:
                         enum:
                           - host
                           - remote
+                    required: true
                   want_reply:
                     type: bool
                   want_user_data:
