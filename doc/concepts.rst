@@ -63,6 +63,13 @@ in its device node.
 	in the sense that either both or neither of the endpoints should be thought of
 	as a server.
 
+.. _concept_origin:
+
+Origin
+------
+
+The origin refers to the :ref:`endpoint <concept_endpoint>` in which an RPC originates.
+
 .. _concept_peer:
 
 Peer

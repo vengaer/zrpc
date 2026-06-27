@@ -18,7 +18,7 @@ Name
 :type: string
 :required: yes
 
-The ``name`` entry specifies the name of the RPC and must unique within the channel. Must
+The ``name`` entry specifies the name of the RPC and must be unique within the channel. Much
 like the channel name, the RPC name must itself be a valid
 `C identifier <https://en.cppreference.com/c/language/identifier>`__.
 
@@ -65,6 +65,9 @@ The ``origin`` sequence is used to determine from which endpoint the RPC may ori
 sequence may contain any combination of the strings ``host`` and ``remote``. When the former is
 set, the RPC may be sent from the :ref:`host <concept_host>` whereas when the latter is included,
 the RPC may be sent from the :ref:`remote <concept_remote>`.
+
+
+.. _rpc_want_reply:
 
 Want Reply
 ----------

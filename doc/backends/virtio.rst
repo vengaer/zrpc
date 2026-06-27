@@ -7,6 +7,8 @@ The virtio backend allows RPC execution over shared memory. This is intended for
 facilitating communication between CPUs on heterogeneous processors such as those
 in the STM32H74X and STM32H75X families.
 
+THe backend is enabled by setting the ``CONFIG_ZRPC_BACKEND_VIRTIO`` option.
+
 .. list-table:: Required devicetree properties
 	:header-rows: 1
 

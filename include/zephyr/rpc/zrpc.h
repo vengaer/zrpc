@@ -92,7 +92,7 @@ struct zrpc_msghdr {
 	zrpc_flags flags;
 	/** CRC computed over relevant portion of the yaml */
 	zrpc_crc crc;
-	/** Length of  attribute tail in bytes, size of header @b not included */
+	/** Length of the attribute tail, in bytes. Size of header @b not included */
 	zrpc_msglen len;
 	/** Sequence number */
 	uint16_t seq;
