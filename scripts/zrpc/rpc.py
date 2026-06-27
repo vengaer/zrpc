@@ -117,6 +117,16 @@ class TypeDecl:
         return self.ident == IdentType.NUL_STRING
 
     @property
+    def is_const_qualified(self) -> bool:
+        """Determine whether or not the decl is const-qualified"""
+        return not not (self.qualifiers & Qualifier.CONST.value)
+
+    @property
+    def is_volatile_qualified(self) -> bool:
+        """Determine whether or not the decl is const-qualified"""
+        return not not (self.qualifiers & Qualifier.VOLATILE.value)
+
+    @property
     def c_decl(self) -> str:
         """Get snippet declaring the type"""
         qualifiers = [q.name.lower() for q in Qualifier if q.value & self.qualifiers]
@@ -235,10 +245,11 @@ class Parameter:
             if not self.size:
                 self.size = f"strlen({self.name}) + 1u"
 
-            if self.direction & Direction.OUT.value:
-                raise InvalidDirectionError(
-                    f"String parameter {self.name} cannot be used as out parameter"
-                )
+                if not (self.direction & Direction.IN.value):
+                    raise InvalidDirectionError(
+                        f"Terminated string parameter {self.name} cannot be used as out-only parameter"
+                    )
+
         elif not self.typedecl.is_ptr:
             if self.size:
                 warnings.warn(f"Explicit size for parameter {self.name} discarded")
@@ -249,6 +260,9 @@ class Parameter:
                 raise InvalidDirectionError(
                     f"Integral parameter {self.name} cannot be used as out parameter"
                 )
+
+        if self.typedecl.is_const_qualified and (self.direction & Direction.OUT.value):
+            raise InvalidDirectionError("Cannot use const-qualified parameter as output")
 
     @classproperty
     def VOID(cls) -> Parameter:
@@ -317,7 +331,7 @@ class Parameter:
         typedecl = TypeDecl.from_yaml(yml["type"])
 
         default_dir = "inout"
-        if typedecl.is_str or not typedecl.is_ptr:
+        if not typedecl.is_ptr or typedecl.is_const_qualified:
             default_dir = "in"
 
         direction = getattr(Direction, yml.get("direction", default_dir).upper())
