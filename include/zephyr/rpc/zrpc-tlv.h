@@ -35,6 +35,16 @@ extern "C" {
  * @{
  */
 
+/** @cond PRIVATE */
+
+#ifdef __cplusplus
+#define zrpc_tlv_restrict__
+#else
+#define zrpc_tlv_restrict__ restrict
+#endif
+
+/** @endcond */
+
 /** Attribute alignment boundary */
 #define zrpc_alignto alignof(struct zrpc_attr)
 
@@ -59,8 +69,8 @@ struct zrpc_tlvb {
  * @param capacity Capacity of the buffer at @c buf.
  * @param buf      Address of the underlying buffer.
  */
-inline void zrpc_tlvb_init(struct zrpc_tlvb *restrict tlvb, uint32_t capacity,
-		void *restrict buf)
+inline void zrpc_tlvb_init(struct zrpc_tlvb *zrpc_tlv_restrict__ tlvb,
+		uint32_t capacity, void *zrpc_tlv_restrict__ buf)
 {
 	tlvb->head = 0;
 	tlvb->capacity = capacity;
@@ -509,8 +519,8 @@ inline struct zrpc_attr const *zrpc_attr_cnext_(struct zrpc_attr const *attr)
  *                 enough that it would cause an overflow.
  * @retval -ENOBUFS Not enough space in the buffer.
  */
-int zrpc_tlvb_put(struct zrpc_tlvb *restrict tlvb, zrpc_tag tag,
-		void const *restrict data, uint32_t n);
+int zrpc_tlvb_put(struct zrpc_tlvb *zrpc_tlv_restrict__ tlvb, zrpc_tag tag,
+		void const *zrpc_tlv_restrict__ data, uint32_t n);
 
 
 /**
