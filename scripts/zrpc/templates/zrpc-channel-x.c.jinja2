@@ -704,7 +704,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% if rpc.in_parameters | length %}
 	struct zrpc_attr *attr;
 		{% for param in rpc.parameters %}
-	{{ param.typedecl.c_decl }}{{ param.name | lower }};
+	{{ param.typedecl.c_decl_unqual }}{{ param.name | lower }};
 		{% endfor %}
 	struct zrpc_attr *attrs[] = {
 		{% for param in rpc.in_parameters %}
@@ -974,7 +974,7 @@ static int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}_rx(struct zrpc
 	{% if rpc.in_parameters | length %}
 	struct zrpc_attr *attr;
 		{% for param in rpc.parameters %}
-	{{ param.typedecl.c_decl }}{{ param.name | lower }};
+	{{ param.typedecl.c_decl_unqual }}{{ param.name | lower }};
 		{% endfor %}
 	struct zrpc_attr *attrs[] = {
 		{% for param in rpc.in_parameters %}
