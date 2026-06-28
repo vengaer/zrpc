@@ -42,7 +42,7 @@ def _render_each_channel(
 
         for ext in ("h", "c"):
             base = "zrpc-channel"
-            filename = f"{base}-{channel.name}.{ext}"
+            filename = f"{base}-{channel.name.lower()}.{ext}"
             template = env.get_template(f"{base}-x.{ext}.jinja2")
             rendered = template.render(channel=channel)
 
