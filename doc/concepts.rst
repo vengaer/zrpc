@@ -106,6 +106,6 @@ Servicer
 
 An RPC servicer is a function that processes an incoming RPC in the receiving
 :ref:`endpoint <concept_endpoint>`. The signature matches that of the RPC save for the
-suffix ``_servive`` having been appended to the name.
+suffix ``_service`` having been appended to the name.
 
 RPC servicers must be implemented by the user.
