@@ -265,7 +265,9 @@ class Parameter:
                 )
 
         if self.typedecl.is_const_qualified and (self.direction & Direction.OUT.value):
-            raise InvalidDirectionError("Cannot use const-qualified parameter as output")
+            raise InvalidDirectionError(
+                "Cannot use const-qualified parameter as output"
+            )
 
     @classproperty
     def VOID(cls) -> Parameter:
