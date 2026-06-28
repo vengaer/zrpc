@@ -91,7 +91,7 @@ Consider the following RPC servicer
 
 	K_MSGQ_ALIGN(msgq, sizeof(uint8_t const *), 8, alignof(uint8_t const *));
 
-	int zrpc_ch0_put_data_service(uint8_t const *data)
+	int zrpc_ch0_put_data_serve(uint8_t const *data)
 	{
 		return k_msgq_put(&msgq, data, K_NO_WAIT);
 	}

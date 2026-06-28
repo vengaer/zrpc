@@ -137,14 +137,14 @@ alters the signature of the services from
 .. code-block:: c
 	:caption: Signature without user data
 
-	int zrpc_ch0_udp_forward_service(uint8_t const *data, uint32_t size)
+	int zrpc_ch0_udp_forward_serve(uint8_t const *data, uint32_t size)
 
 to
 
 .. code-block:: c
 	:caption: Signature with user data requested
 
-	int zrpc_ch0_udp_forward_service(uint8_t const *data, uint32_t size, void *user_data);
+	int zrpc_ch0_udp_forward_serve(uint8_t const *data, uint32_t size, void *user_data);
 
 The ``user_data`` pointer --- initialized to ``NULL`` --- is a global part of the generated section of
 the zRPC core and may be assigned via the ``zrpc_ch0_udp_forward_set_user_data`` function,
@@ -178,7 +178,7 @@ similar to the following.
 	};
 
 	/* RPC servicer */
-	int zrpc_ch0_udp_forward_service(uint8_t const *data, uint32_t size, void *user_data)
+	int zrpc_ch0_udp_forward_serve(uint8_t const *data, uint32_t size, void *user_data)
 	{
 		struct udp_user_data *ud = user_data;
 		/* Handler invoked with user data mutex locked, accesses are safe */
