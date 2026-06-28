@@ -9,6 +9,9 @@ issued across arbitrary transport mediums such as shared memory or Ethernet.
 At the time of writing, the only medium supported by the module is shared memory
 via the OpenAMP-based VirtIO backend.
 
+Documentation --- by courtesy of readthedocs --- available
+`here <https://zrpc.readthedocs.io/en/latest/>`__.
+
 Using the Module
 ----------------
 
