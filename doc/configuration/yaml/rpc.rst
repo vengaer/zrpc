@@ -90,6 +90,8 @@ not the RPC could be sent.
 
 The option defaults to ``True``.
 
+.. _rpc_want_user_data:
+
 Want User Data
 --------------
 

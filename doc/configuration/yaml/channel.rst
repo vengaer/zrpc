@@ -8,6 +8,8 @@ entry therein specifies a unique RPC channel which requires a name, a numeric
 identifier and a sequence of :ref:`RPCs <config_rpc>`. Additionally, the channel may
 also be associated with a description.
 
+.. _config_channel_name:
+
 Name
 ----
 
