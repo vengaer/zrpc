@@ -15,6 +15,9 @@ import sphinx.cmd.build
 zrpc_base = pathlib.Path(os.environ["ZRPC_BASE"])
 assert zrpc_base.is_dir()
 
+deploy = os.environ.get("DEPLOY", 0)
+version = os.environ.get("ZRPC_VERSION", "latest")
+
 # -- Command line arguments --------------------------------------------------
 parser = sphinx.cmd.build.get_parser()
 args = parser.parse_args()
@@ -55,13 +58,15 @@ tikz_resolution = 1024
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
+form_reference = lambda page: f"/en/{version}/{page}" if deploy else "/{page}"
+
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 html_theme_options = {"logo_only": False, "display_version": False}
 html_context = {
     "reference_links": {
-        "C API": "/doxygen",
-        "Python API": "/pdoc",
+        "C API": form_reference("doxygen"),
+        "Python API": form_reference("pdoc"),
     },
 }

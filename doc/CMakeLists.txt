@@ -12,6 +12,8 @@ set(HTML_OUT ${CMAKE_CURRENT_BINARY_DIR}/html)
 set(ZRPC_BASE ${CMAKE_CURRENT_LIST_DIR}/..)
 file(REAL_PATH "${ZRPC_BASE}" ZRPC_BASE)
 
+option(DEPLOY "Build for deployment" 0)
+set(ZRPC_VERSION "latest" CACHE STRING "zRPC version")
 
 set(WEST_TOPDIR "${ZRPC_BASE}/.." CACHE STRING "Path to the west topdir")
 file(REAL_PATH "${WEST_TOPDIR}" WEST_TOPDIR)
@@ -26,7 +28,6 @@ set(DOXYFILE_OUT ${CMAKE_CURRENT_BINARY_DIR}/doxyfile)
 
 # Substituted in when configuring doxyfile
 set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/doxygen)
-set(ZRPC_VERSION "0.0.1")
 
 configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
 
@@ -86,6 +87,10 @@ set_target_properties(
 # HTML target
 
 list(APPEND DOC_ENV "ZRPC_BASE=${ZRPC_BASE}")
+list(APPEND DOC_ENV "ZRPC_VERSION=${ZRPC_VERSION}")
+if(${DEPLOY})
+    list(APPEND DOC_ENV "DEPLOY=1")
+endif()
 
 sphinx_add_docs(html ALL
     DEPENDS doxygen-deploy pdoc
