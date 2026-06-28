@@ -422,7 +422,7 @@ class Rpc:
             if param.size == param.name:
                 raise SelfRefError(f"Size field of {param.name} references itself")
 
-            if by_name[param.size].typedecl.is_ptr:
+            if param.size in by_name and by_name[param.size].typedecl.is_ptr:
                 raise InvalidSizeFieldError(
                     f"Size field '{param.size}' is a pointer, should be integral"
                 )
