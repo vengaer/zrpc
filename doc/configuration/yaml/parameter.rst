@@ -77,8 +77,9 @@ for obvious reasons, require that the parameter is not ``const`` qualified. For 
 
 .. warning::
 
-	Terminating an output string is **truly** if the input buffer was itself null-terminated as the zRPC core
-	leverages ``strlen`` to determine the size of all output strings save for the ones that are fixed-size.
+	Terminating an output string is **truly** required if the input buffer was itself null-terminated as the
+	zRPC core leverages ``strlen`` to determine the size of all output strings save for the ones that are
+	fixed-size.
 
 Non-Terminated Pointer
 **********************
