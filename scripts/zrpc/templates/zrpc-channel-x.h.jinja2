@@ -171,7 +171,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 #else
 static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
-		{% for param in rpc.parameters %}
+		{% for param in rpc.non_void_parameters %}
 		(void){{ param.name }};
 		{% endfor %}
 		return -ENOTSUP;
@@ -227,7 +227,7 @@ int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | m
 #else
 static inline int zrpc_{{ channel.name | lower }}_{{ rpc.name | lower }}({{ rpc.parameters | map(attribute="c_decl") | join(", ") }})
 {
-		{% for param in rpc.parameters %}
+		{% for param in rpc.non_void_parameters %}
 		(void){{ param.name }};
 		{% endfor %}
 		return -ENOTSUP;

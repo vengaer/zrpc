@@ -458,6 +458,11 @@ class Rpc:
         """Get list of size parameters"""
         return [p for p in self.parameters if p.is_size_parameter]
 
+    @property
+    def non_void_parameters(self) -> List[Parameter]:
+        """Get list of non-void parameters"""
+        return [p for p in self.parameters if p != Parameter.VOID]
+
     @classmethod
     def _validate_parameters(cls, parameters: List[Parameter]) -> None:
         """Validate parsed parameters.
