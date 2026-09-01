@@ -854,6 +854,9 @@ static void zrpc_virtio_rp_ept_work(struct k_work *work)
 		if (ret)
 			VDEV_ERR(&data->vdev, "Error processing %s: %d",
 				is_reply ? "reply" : "incoming RPC", -ret);
+
+		/* Let other same-priority work run between incoming RPCs. */
+		k_yield();
 	} while (true);
 }
 
