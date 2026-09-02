@@ -104,6 +104,12 @@ module = ZRPC_VIRTIO
 module-str = zRPC virtio backend
 source "subsys/logging/Kconfig.template.log_config"
 
+config ZRPC_VIRTIO_RX_YIELD
+	bool "Yield after each processed RPC"
+	default y
+	help
+	  Enabling this option causes the virtio backend to yield after each received RPC is processed.
+
 endif # ZRPC_BACKEND_VIRTIO
 
 endif # ZRPC
