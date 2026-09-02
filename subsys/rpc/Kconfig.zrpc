@@ -31,7 +31,7 @@ config ZRPC_USER_DATA_BUCKET_SHIFT
 
 
 config ZRPC_PEDANTIC
-	bool "Enable pedantic zRPC checks"
+	bool "Pedantic zRPC checks"
 	default y
 	help
 	  Enable pedantic checks to prevent potential exploits. This
